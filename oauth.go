@@ -70,7 +70,7 @@ func NewOauthClient(args OauthClientArgs) (*OauthClient, error) {
 	}, nil
 }
 
-func (o *OauthClient) ResolvePDSAuthServer(ctx context.Context, ustr string) (string, error) {
+func (c *OauthClient) ResolvePDSAuthServer(ctx context.Context, ustr string) (string, error) {
 	u, err := isSafeAndParsed(ustr)
 	if err != nil {
 		return "", err
@@ -83,7 +83,7 @@ func (o *OauthClient) ResolvePDSAuthServer(ctx context.Context, ustr string) (st
 		return "", fmt.Errorf("error creating request for oauth protected resource: %w", err)
 	}
 
-	resp, err := o.h.Do(req)
+	resp, err := c.h.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("could not get response from server: %w", err)
 	}
@@ -111,7 +111,7 @@ func (o *OauthClient) ResolvePDSAuthServer(ctx context.Context, ustr string) (st
 	return resource.AuthorizationServers[0], nil
 }
 
-func (o *OauthClient) FetchAuthServerMetadata(ctx context.Context, ustr string) (any, error) {
+func (c *OauthClient) FetchAuthServerMetadata(ctx context.Context, ustr string) (any, error) {
 	u, err := isSafeAndParsed(ustr)
 	if err != nil {
 		return nil, err
@@ -124,7 +124,7 @@ func (o *OauthClient) FetchAuthServerMetadata(ctx context.Context, ustr string) 
 		return nil, fmt.Errorf("error creating request to fetch auth metadata: %w", err)
 	}
 
-	resp, err := o.h.Do(req)
+	resp, err := c.h.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error getting response for auth metadata: %w", err)
 	}
@@ -152,19 +152,19 @@ func (o *OauthClient) FetchAuthServerMetadata(ctx context.Context, ustr string) 
 	return metadata, nil
 }
 
-func (o *OauthClient) ClientAssertionJwt(authServerUrl string) (string, error) {
+func (c *OauthClient) ClientAssertionJwt(authServerUrl string) (string, error) {
 	claims := jwt.MapClaims{
-		"iss": o.clientId,
-		"sub": o.clientId,
+		"iss": c.clientId,
+		"sub": c.clientId,
 		"aud": authServerUrl,
 		"jti": uuid.NewString(),
 		"iat": time.Now().Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
-	token.Header["kid"] = o.clientKid
+	token.Header["kid"] = c.clientKid
 
-	tokenString, err := token.SignedString(o.clientPrivateKey)
+	tokenString, err := token.SignedString(c.clientPrivateKey)
 	if err != nil {
 		return "", err
 	}
@@ -172,7 +172,7 @@ func (o *OauthClient) ClientAssertionJwt(authServerUrl string) (string, error) {
 	return tokenString, nil
 }
 
-func (o *OauthClient) AuthServerDpopJwt(method, url, nonce string, privateJwk jwk.Key) (string, error) {
+func (c *OauthClient) AuthServerDpopJwt(method, url, nonce string, privateJwk jwk.Key) (string, error) {
 	raw, err := jwk.PublicKeyOf(privateJwk)
 	if err != nil {
 		return "", err
@@ -225,7 +225,7 @@ func (o *OauthClient) AuthServerDpopJwt(method, url, nonce string, privateJwk jw
 	return tokenString, nil
 }
 
-func (o *OauthClient) SendParAuthRequest(ctx context.Context, authServerUrl string, authServerMeta *OauthAuthorizationMetadata, loginHint, scope string, dpopPrivateKey jwk.Key) (any, error) {
+func (c *OauthClient) SendParAuthRequest(ctx context.Context, authServerUrl string, authServerMeta *OauthAuthorizationMetadata, loginHint, scope string, dpopPrivateKey jwk.Key) (any, error) {
 	if authServerMeta == nil {
 		return nil, fmt.Errorf("nil metadata provided")
 	}
@@ -245,14 +245,14 @@ func (o *OauthClient) SendParAuthRequest(ctx context.Context, authServerUrl stri
 	codeChallenge := generateCodeChallenge(pkceVerifier)
 	codeChallengeMethod := "S256"
 
-	clientAssertion, err := o.ClientAssertionJwt(authServerUrl)
+	clientAssertion, err := c.ClientAssertionJwt(authServerUrl)
 	if err != nil {
 		return nil, err
 	}
 
 	// TODO: ??
 	nonce := ""
-	dpopProof, err := o.AuthServerDpopJwt("POST", parUrl, nonce, dpopPrivateKey)
+	dpopProof, err := c.AuthServerDpopJwt("POST", parUrl, nonce, dpopPrivateKey)
 	if err != nil {
 		return nil, err
 	}
@@ -261,9 +261,9 @@ func (o *OauthClient) SendParAuthRequest(ctx context.Context, authServerUrl stri
 		"response_type":         "code",
 		"code_challenge":        codeChallenge,
 		"code_challenge_method": codeChallengeMethod,
-		"client_id":             o.clientId,
+		"client_id":             c.clientId,
 		"state":                 state,
-		"redirect_uri":          o.redirectUri,
+		"redirect_uri":          c.redirectUri,
 		"scope":                 scope,
 		"client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
 		"client_assertion":      clientAssertion,
