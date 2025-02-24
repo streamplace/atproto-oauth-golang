@@ -65,102 +65,82 @@ func (oam *OauthAuthorizationMetadata) Validate(fetch_url *url.URL) error {
 
 	iu, err := url.Parse(oam.Issuer)
 	if err != nil {
-		oam = nil
 		return err
 	}
 
 	if iu.Hostname() != fetch_url.Hostname() {
-		oam = nil
 		return fmt.Errorf("issuer hostname does not match fetch url hostname")
 	}
 
 	if iu.Scheme != "https" {
-		oam = nil
 		return fmt.Errorf("issuer url is not https")
 	}
 
 	if iu.Port() != "" {
-		oam = nil
 		return fmt.Errorf("issuer port is not empty")
 	}
 
 	if iu.Path != "" && iu.Path != "/" {
-		oam = nil
 		return fmt.Errorf("issuer path is not /")
 	}
 
 	if iu.RawQuery != "" {
-		oam = nil
 		return fmt.Errorf("issuer url params are not empty")
 	}
 
 	if !tokenInSet("code", oam.ResponseTypesSupported) {
-		oam = nil
 		return fmt.Errorf("`code` is not in response_types_supported")
 	}
 
 	if !tokenInSet("authorization_code", oam.GrantTypesSupported) {
-		oam = nil
 		return fmt.Errorf("`authorization_code` is not in grant_types_supported")
 	}
 
 	if !tokenInSet("refresh_token", oam.GrantTypesSupported) {
-		oam = nil
 		return fmt.Errorf("`refresh_token` is not in grant_types_supported")
 	}
 
 	if !tokenInSet("S256", oam.CodeChallengeMethodsSupported) {
-		oam = nil
 		return fmt.Errorf("`S256` is not in code_challenge_methods_supported")
 	}
 
 	if !tokenInSet("none", oam.TokenEndpointAuthMethodsSupported) {
-		oam = nil
 		return fmt.Errorf("`none` is not in token_endpoint_auth_methods_supported")
 	}
 
 	if !tokenInSet("private_key_jwt", oam.TokenEndpointAuthMethodsSupported) {
-		oam = nil
 		return fmt.Errorf("`private_key_jwt` is not in token_endpoint_auth_methods_supported")
 	}
 
 	if !tokenInSet("ES256", oam.TokenEndpointAuthSigningAlgValuesSupported) {
-		oam = nil
 		return fmt.Errorf("`ES256` is not in token_endpoint_auth_signing_alg_values_supported")
 	}
 
 	if !tokenInSet("atproto", oam.ScopesSupported) {
-		oam = nil
 		return fmt.Errorf("`atproto` is not in scopes_supported")
 	}
 
 	if oam.AuthorizationResponseISSParameterSupported != true {
-		oam = nil
 		return fmt.Errorf("authorization_response_iss_parameter_supported is not true")
 	}
 
 	if oam.PushedAuthorizationRequestEndpoint == "" {
-		oam = nil
 		return fmt.Errorf("pushed_authorization_request_endpoint is empty")
 	}
 
 	if oam.RequirePushedAuthorizationRequests == false {
-		oam = nil
 		return fmt.Errorf("require_pushed_authorization_requests is false")
 	}
 
 	if !tokenInSet("ES256", oam.DpopSigningAlgValuesSupported) {
-		oam = nil
 		return fmt.Errorf("`ES256` is not in dpop_signing_alg_values_supported")
 	}
 
 	if oam.RequireRequestUriRegistration != nil && *oam.RequireRequestUriRegistration == false {
-		oam = nil
 		return fmt.Errorf("require_request_uri_registration present in metadata and was false")
 	}
 
 	if oam.ClientIDMetadataDocumentSupported == false {
-		oam = nil
 		return fmt.Errorf("client_id_metadata_document_supported was false")
 	}
 

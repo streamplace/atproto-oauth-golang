@@ -16,7 +16,7 @@ all: build
 
 .PHONY: test
 test: ## Run tests
-	go test ./...
+	go test -v ./...
 
 .PHONY: coverage-html
 coverage-html: ## Generate test coverage report and open in browser
