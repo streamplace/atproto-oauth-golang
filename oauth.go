@@ -1,7 +1,6 @@
 package oauth
 
 import (
-	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
@@ -12,6 +11,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -111,7 +112,7 @@ func (c *OauthClient) ResolvePDSAuthServer(ctx context.Context, ustr string) (st
 	return resource.AuthorizationServers[0], nil
 }
 
-func (c *OauthClient) FetchAuthServerMetadata(ctx context.Context, ustr string) (any, error) {
+func (c *OauthClient) FetchAuthServerMetadata(ctx context.Context, ustr string) (*OauthAuthorizationMetadata, error) {
 	u, err := isSafeAndParsed(ustr)
 	if err != nil {
 		return nil, err
@@ -149,7 +150,7 @@ func (c *OauthClient) FetchAuthServerMetadata(ctx context.Context, ustr string) 
 		return nil, fmt.Errorf("could not validate metadata: %w", err)
 	}
 
-	return metadata, nil
+	return &metadata, nil
 }
 
 func (c *OauthClient) ClientAssertionJwt(authServerUrl string) (string, error) {
@@ -225,7 +226,14 @@ func (c *OauthClient) AuthServerDpopJwt(method, url, nonce string, privateJwk jw
 	return tokenString, nil
 }
 
-func (c *OauthClient) SendParAuthRequest(ctx context.Context, authServerUrl string, authServerMeta *OauthAuthorizationMetadata, loginHint, scope string, dpopPrivateKey jwk.Key) (any, error) {
+type SendParAuthResponse struct {
+	PkceVerifier        string
+	State               string
+	DpopAuthserverNonce string
+	Resp                map[string]string
+}
+
+func (c *OauthClient) SendParAuthRequest(ctx context.Context, authServerUrl string, authServerMeta *OauthAuthorizationMetadata, loginHint, scope string, dpopPrivateKey jwk.Key) (*SendParAuthResponse, error) {
 	if authServerMeta == nil {
 		return nil, fmt.Errorf("nil metadata provided")
 	}
@@ -257,20 +265,20 @@ func (c *OauthClient) SendParAuthRequest(ctx context.Context, authServerUrl stri
 		return nil, err
 	}
 
-	parBody := map[string]string{
-		"response_type":         "code",
-		"code_challenge":        codeChallenge,
-		"code_challenge_method": codeChallengeMethod,
-		"client_id":             c.clientId,
-		"state":                 state,
-		"redirect_uri":          c.redirectUri,
-		"scope":                 scope,
-		"client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
-		"client_assertion":      clientAssertion,
+	params := url.Values{
+		"response_type":         {"code"},
+		"code_challenge":        {codeChallenge},
+		"code_challenge_method": {codeChallengeMethod},
+		"client_id":             {c.clientId},
+		"state":                 {state},
+		"redirect_uri":          {c.redirectUri},
+		"scope":                 {scope},
+		"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
+		"client_assertion":      {clientAssertion},
 	}
 
 	if loginHint != "" {
-		parBody["login_hint"] = loginHint
+		params.Set("login_hint", loginHint)
 	}
 
 	_, err = isSafeAndParsed(parUrl)
@@ -278,20 +286,169 @@ func (c *OauthClient) SendParAuthRequest(ctx context.Context, authServerUrl stri
 		return nil, err
 	}
 
-	b, err := json.Marshal(parBody)
+	req, err := http.NewRequestWithContext(ctx, "POST", parUrl, strings.NewReader(params.Encode()))
 	if err != nil {
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", parUrl, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("DPoP", dpopProof)
+
+	resp, err := c.h.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var rmap map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&rmap); err != nil {
+		return nil, err
+	}
+
+	// TODO: there's some logic in the flask example where we retry if the server
+	// asks us to use a dpop nonce. we should add that here eventually, but for now
+	// we'll skip that
+
+	return &SendParAuthResponse{
+		PkceVerifier:        pkceVerifier,
+		State:               state,
+		DpopAuthserverNonce: "", // add here later
+		Resp:                rmap,
+	}, nil
+}
+
+type TokenResponse struct {
+	DpopAuthserverNonce string
+	Resp                map[string]string
+}
+
+func (c *OauthClient) InitialTokenRequest(ctx context.Context, authRequest map[string]string, code, appUrl string) (*TokenResponse, error) {
+	authserverUrl := authRequest["authserver_iss"]
+	authserverMeta, err := c.FetchAuthServerMetadata(ctx, authserverUrl)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Add("DPoP", dpopProof)
+	clientAssertion, err := c.ClientAssertionJwt(authserverUrl)
+	if err != nil {
+		return nil, err
+	}
 
-	return nil, nil
+	params := url.Values{
+		"client_id":             {c.clientId},
+		"redirect_uri":          {c.redirectUri},
+		"grant_type":            {"authorization_code"},
+		"code":                  {code},
+		"code_verifier":         {authRequest["pkce_verifier"]},
+		"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
+		"client_assertion":      {clientAssertion},
+	}
+
+	dpopPrivateJwk, err := parsePrivateJwkFromString(authRequest["dpop_private_jwk"])
+	if err != nil {
+		return nil, err
+	}
+
+	dpopProof, err := c.AuthServerDpopJwt("POST", authserverMeta.TokenEndpoint, authRequest["dpop_authserver_nonce"], dpopPrivateJwk)
+	if err != nil {
+		return nil, err
+	}
+
+	dpopAuthserverNonce := authRequest["dpop_authserver_nonce"]
+
+	req, err := http.NewRequestWithContext(ctx, "POST", authserverMeta.TokenEndpoint, strings.NewReader(params.Encode()))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("DPoP", dpopProof)
+
+	resp, err := c.h.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// TODO: use nonce if needed, same as in par
+
+	var rmap map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&rmap); err != nil {
+		return nil, err
+	}
+
+	return &TokenResponse{
+		DpopAuthserverNonce: dpopAuthserverNonce,
+		Resp:                rmap,
+	}, nil
+}
+
+type RefreshTokenArgs struct {
+	AuthserverUrl       string
+	RefreshToken        string
+	DpopPrivateJwk      string
+	DpopAuthserverNonce string
+}
+
+func (c *OauthClient) RefreshTokenRequest(ctx context.Context, args RefreshTokenArgs, appUrl string) (any, error) {
+	authserverMeta, err := c.FetchAuthServerMetadata(ctx, args.AuthserverUrl)
+	if err != nil {
+		return nil, err
+	}
+
+	clientAssertion, err := c.ClientAssertionJwt(args.AuthserverUrl)
+	if err != nil {
+		return nil, err
+	}
+
+	params := url.Values{
+		"client_id":             {c.clientId},
+		"grant_type":            {"refresh_token"},
+		"refresh_token":         {args.RefreshToken},
+		"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
+		"client_assertion":      {clientAssertion},
+	}
+
+	dpopPrivateJwk, err := parsePrivateJwkFromString(args.DpopPrivateJwk)
+	if err != nil {
+		return nil, err
+	}
+
+	dpopProof, err := c.AuthServerDpopJwt("POST", authserverMeta.TokenEndpoint, args.DpopAuthserverNonce, dpopPrivateJwk)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", authserverMeta.TokenEndpoint, strings.NewReader(params.Encode()))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("DPoP", dpopProof)
+
+	resp, err := c.h.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// TODO: handle same thing as above...
+
+	if resp.StatusCode != 200 && resp.StatusCode != 201 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("token refresh error: %s", string(b))
+	}
+
+	var rmap map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&rmap); err != nil {
+		return nil, err
+	}
+
+	return &TokenResponse{
+		DpopAuthserverNonce: args.DpopAuthserverNonce,
+		Resp:                rmap,
+	}, nil
 }
 
 func generateToken(len int) (string, error) {
@@ -308,4 +465,8 @@ func generateCodeChallenge(pkceVerifier string) string {
 	h.Write([]byte(pkceVerifier))
 	hash := h.Sum(nil)
 	return base64.RawURLEncoding.EncodeToString(hash)
+}
+
+func parsePrivateJwkFromString(str string) (jwk.Key, error) {
+	return jwk.ParseKey([]byte(str))
 }

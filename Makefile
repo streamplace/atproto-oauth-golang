@@ -36,5 +36,9 @@ fmt: ## Run syntax re-formatting (modify in place)
 check: ## Compile everything, checking syntax (does not output binaries)
 	go build ./...
 
+.PHONY: test-server
+test-server:
+	go run ./cmd/client_test
+
 .env:
 	if [ ! -f ".env" ]; then cp example.dev.env .env; fi
