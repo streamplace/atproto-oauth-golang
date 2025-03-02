@@ -107,7 +107,10 @@ func (c *OauthClient) ResolvePDSAuthServer(ctx context.Context, ustr string) (st
 	return resource.AuthorizationServers[0], nil
 }
 
-func (c *OauthClient) FetchAuthServerMetadata(ctx context.Context, ustr string) (*OauthAuthorizationMetadata, error) {
+func (c *OauthClient) FetchAuthServerMetadata(
+	ctx context.Context,
+	ustr string,
+) (*OauthAuthorizationMetadata, error) {
 	u, err := isSafeAndParsed(ustr)
 	if err != nil {
 		return nil, err
@@ -128,7 +131,10 @@ func (c *OauthClient) FetchAuthServerMetadata(ctx context.Context, ustr string) 
 
 	if resp.StatusCode != http.StatusOK {
 		io.Copy(io.Discard, resp.Body)
-		return nil, fmt.Errorf("received non-200 response from pds. status code was %d", resp.StatusCode)
+		return nil, fmt.Errorf(
+			"received non-200 response from pds. status code was %d",
+			resp.StatusCode,
+		)
 	}
 
 	b, err := io.ReadAll(resp.Body)
@@ -168,7 +174,10 @@ func (c *OauthClient) ClientAssertionJwt(authServerUrl string) (string, error) {
 	return tokenString, nil
 }
 
-func (c *OauthClient) AuthServerDpopJwt(method, url, nonce string, privateJwk jwk.Key) (string, error) {
+func (c *OauthClient) AuthServerDpopJwt(
+	method, url, nonce string,
+	privateJwk jwk.Key,
+) (string, error) {
 	pubJwk, err := privateJwk.PublicKey()
 	if err != nil {
 		return "", err
@@ -223,7 +232,13 @@ type SendParAuthResponse struct {
 	Resp                map[string]any
 }
 
-func (c *OauthClient) SendParAuthRequest(ctx context.Context, authServerUrl string, authServerMeta *OauthAuthorizationMetadata, loginHint, scope string, dpopPrivateKey jwk.Key) (*SendParAuthResponse, error) {
+func (c *OauthClient) SendParAuthRequest(
+	ctx context.Context,
+	authServerUrl string,
+	authServerMeta *OauthAuthorizationMetadata,
+	loginHint, scope string,
+	dpopPrivateKey jwk.Key,
+) (*SendParAuthResponse, error) {
 	if authServerMeta == nil {
 		return nil, fmt.Errorf("nil metadata provided")
 	}
@@ -302,7 +317,12 @@ func (c *OauthClient) SendParAuthRequest(ctx context.Context, authServerUrl stri
 			return nil, err
 		}
 
-		req2, err := http.NewRequestWithContext(ctx, "POST", parUrl, strings.NewReader(params.Encode()))
+		req2, err := http.NewRequestWithContext(
+			ctx,
+			"POST",
+			parUrl,
+			strings.NewReader(params.Encode()),
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -335,7 +355,11 @@ type TokenResponse struct {
 	Resp                map[string]string
 }
 
-func (c *OauthClient) InitialTokenRequest(ctx context.Context, authRequest map[string]string, code, appUrl string) (*TokenResponse, error) {
+func (c *OauthClient) InitialTokenRequest(
+	ctx context.Context,
+	authRequest map[string]string,
+	code, appUrl string,
+) (*TokenResponse, error) {
 	authserverUrl := authRequest["authserver_iss"]
 	authserverMeta, err := c.FetchAuthServerMetadata(ctx, authserverUrl)
 	if err != nil {
@@ -362,14 +386,24 @@ func (c *OauthClient) InitialTokenRequest(ctx context.Context, authRequest map[s
 		return nil, err
 	}
 
-	dpopProof, err := c.AuthServerDpopJwt("POST", authserverMeta.TokenEndpoint, authRequest["dpop_authserver_nonce"], dpopPrivateJwk)
+	dpopProof, err := c.AuthServerDpopJwt(
+		"POST",
+		authserverMeta.TokenEndpoint,
+		authRequest["dpop_authserver_nonce"],
+		dpopPrivateJwk,
+	)
 	if err != nil {
 		return nil, err
 	}
 
 	dpopAuthserverNonce := authRequest["dpop_authserver_nonce"]
 
-	req, err := http.NewRequestWithContext(ctx, "POST", authserverMeta.TokenEndpoint, strings.NewReader(params.Encode()))
+	req, err := http.NewRequestWithContext(
+		ctx,
+		"POST",
+		authserverMeta.TokenEndpoint,
+		strings.NewReader(params.Encode()),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -403,7 +437,11 @@ type RefreshTokenArgs struct {
 	DpopAuthserverNonce string
 }
 
-func (c *OauthClient) RefreshTokenRequest(ctx context.Context, args RefreshTokenArgs, appUrl string) (any, error) {
+func (c *OauthClient) RefreshTokenRequest(
+	ctx context.Context,
+	args RefreshTokenArgs,
+	appUrl string,
+) (any, error) {
 	authserverMeta, err := c.FetchAuthServerMetadata(ctx, args.AuthserverUrl)
 	if err != nil {
 		return nil, err
@@ -427,12 +465,22 @@ func (c *OauthClient) RefreshTokenRequest(ctx context.Context, args RefreshToken
 		return nil, err
 	}
 
-	dpopProof, err := c.AuthServerDpopJwt("POST", authserverMeta.TokenEndpoint, args.DpopAuthserverNonce, dpopPrivateJwk)
+	dpopProof, err := c.AuthServerDpopJwt(
+		"POST",
+		authserverMeta.TokenEndpoint,
+		args.DpopAuthserverNonce,
+		dpopPrivateJwk,
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", authserverMeta.TokenEndpoint, strings.NewReader(params.Encode()))
+	req, err := http.NewRequestWithContext(
+		ctx,
+		"POST",
+		authserverMeta.TokenEndpoint,
+		strings.NewReader(params.Encode()),
+	)
 	if err != nil {
 		return nil, err
 	}
