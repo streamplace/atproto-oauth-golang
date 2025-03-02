@@ -16,12 +16,7 @@ all: build
 
 .PHONY: test
 test: ## Run tests
-	go test -v ./...
-
-.PHONY: coverage-html
-coverage-html: ## Generate test coverage report and open in browser
-	go test ./... -coverpkg=./... -coverprofile=test-coverage.out
-	go tool cover -html=test-coverage.out
+	go clean -testcache && go test -v ./...
 
 .PHONY: lint
 lint: ## Verify code style and run static checks
@@ -37,8 +32,12 @@ check: ## Compile everything, checking syntax (does not output binaries)
 	go build ./...
 
 .PHONY: test-server
-test-server:
+test-server: ## Run the test server
 	go run ./cmd/client_test
+
+.PHONY: test-jwks
+test-jwks: ## Create a test jwks file
+	go run ./cmd/cmd generate-jwks --prefix demo
 
 .env:
 	if [ ! -f ".env" ]; then cp example.dev.env .env; fi

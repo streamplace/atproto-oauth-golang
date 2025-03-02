@@ -22,14 +22,17 @@ func GenerateKey(kidPrefix *string) (jwk.Key, error) {
 		return nil, err
 	}
 
+	var kid string
 	if kidPrefix != nil {
-		kid := fmt.Sprintf("%s-%d", *kidPrefix, time.Now().Unix())
+		kid = fmt.Sprintf("%s-%d", *kidPrefix, time.Now().Unix())
 
-		if err := key.Set(jwk.KeyIDKey, kid); err != nil {
-			return nil, err
-		}
+	} else {
+		kid = fmt.Sprintf("%d", time.Now().Unix())
 	}
 
+	if err := key.Set(jwk.KeyIDKey, kid); err != nil {
+		return nil, err
+	}
 	return key, nil
 }
 
@@ -74,4 +77,18 @@ func getPublicKey(key jwk.Key) (*ecdsa.PublicKey, error) {
 	}
 
 	return &pkey, nil
+}
+
+type JwksResponseObject struct {
+	Keys []jwk.Key `json:"keys"`
+}
+
+func CreateJwksResponseObject(key jwk.Key) *JwksResponseObject {
+	return &JwksResponseObject{
+		Keys: []jwk.Key{key},
+	}
+}
+
+func ParseKeyFromBytes(b []byte) (jwk.Key, error) {
+	return jwk.ParseKey(b)
 }

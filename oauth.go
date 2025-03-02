@@ -30,7 +30,7 @@ type OauthClient struct {
 
 type OauthClientArgs struct {
 	H           *http.Client
-	ClientJwk   []byte
+	ClientJwk   jwk.Key
 	ClientId    string
 	RedirectUri string
 }
@@ -50,17 +50,12 @@ func NewOauthClient(args OauthClientArgs) (*OauthClient, error) {
 		}
 	}
 
-	clientJwk, err := jwk.ParseKey(args.ClientJwk)
-	if err != nil {
-		return nil, err
-	}
-
-	clientPkey, err := getPrivateKey(clientJwk)
+	clientPkey, err := getPrivateKey(args.ClientJwk)
 	if err != nil {
 		return nil, fmt.Errorf("could not load private key from provided client jwk: %w", err)
 	}
 
-	kid := clientJwk.KeyID()
+	kid := args.ClientJwk.KeyID()
 
 	return &OauthClient{
 		h:                args.H,
@@ -174,12 +169,7 @@ func (c *OauthClient) ClientAssertionJwt(authServerUrl string) (string, error) {
 }
 
 func (c *OauthClient) AuthServerDpopJwt(method, url, nonce string, privateJwk jwk.Key) (string, error) {
-	raw, err := jwk.PublicKeyOf(privateJwk)
-	if err != nil {
-		return "", err
-	}
-
-	pubJwk, err := jwk.FromRaw(raw)
+	pubJwk, err := privateJwk.PublicKey()
 	if err != nil {
 		return "", err
 	}
@@ -189,7 +179,7 @@ func (c *OauthClient) AuthServerDpopJwt(method, url, nonce string, privateJwk jw
 		return "", err
 	}
 
-	var pubMap map[string]interface{}
+	var pubMap map[string]any
 	if err := json.Unmarshal(b, &pubMap); err != nil {
 		return "", err
 	}
@@ -213,7 +203,7 @@ func (c *OauthClient) AuthServerDpopJwt(method, url, nonce string, privateJwk jw
 	token.Header["alg"] = "ES256"
 	token.Header["jwk"] = pubMap
 
-	var rawKey interface{}
+	var rawKey any
 	if err := privateJwk.Raw(&rawKey); err != nil {
 		return "", err
 	}
@@ -230,7 +220,7 @@ type SendParAuthResponse struct {
 	PkceVerifier        string
 	State               string
 	DpopAuthserverNonce string
-	Resp                map[string]string
+	Resp                map[string]any
 }
 
 func (c *OauthClient) SendParAuthRequest(ctx context.Context, authServerUrl string, authServerMeta *OauthAuthorizationMetadata, loginHint, scope string, dpopPrivateKey jwk.Key) (*SendParAuthResponse, error) {
@@ -259,10 +249,10 @@ func (c *OauthClient) SendParAuthRequest(ctx context.Context, authServerUrl stri
 	}
 
 	// TODO: ??
-	nonce := ""
-	dpopProof, err := c.AuthServerDpopJwt("POST", parUrl, nonce, dpopPrivateKey)
+	dpopAuthserverNonce := ""
+	dpopProof, err := c.AuthServerDpopJwt("POST", parUrl, dpopAuthserverNonce, dpopPrivateKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error getting dpop proof: %w", err)
 	}
 
 	params := url.Values{
@@ -300,19 +290,42 @@ func (c *OauthClient) SendParAuthRequest(ctx context.Context, authServerUrl stri
 	}
 	defer resp.Body.Close()
 
-	var rmap map[string]string
+	var rmap map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&rmap); err != nil {
 		return nil, err
 	}
 
-	// TODO: there's some logic in the flask example where we retry if the server
-	// asks us to use a dpop nonce. we should add that here eventually, but for now
-	// we'll skip that
+	if resp.StatusCode == 400 && rmap["error"] == "use_dpop_nonce" {
+		dpopAuthserverNonce = resp.Header.Get("DPoP-Nonce")
+		dpopProof, err := c.AuthServerDpopJwt("POST", parUrl, dpopAuthserverNonce, dpopPrivateKey)
+		if err != nil {
+			return nil, err
+		}
+
+		req2, err := http.NewRequestWithContext(ctx, "POST", parUrl, strings.NewReader(params.Encode()))
+		if err != nil {
+			return nil, err
+		}
+
+		req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req2.Header.Set("DPoP", dpopProof)
+
+		resp2, err := c.h.Do(req2)
+		if err != nil {
+			return nil, err
+		}
+		defer resp2.Body.Close()
+
+		rmap = map[string]any{}
+		if err := json.NewDecoder(resp2.Body).Decode(&rmap); err != nil {
+			return nil, err
+		}
+	}
 
 	return &SendParAuthResponse{
 		PkceVerifier:        pkceVerifier,
 		State:               state,
-		DpopAuthserverNonce: "", // add here later
+		DpopAuthserverNonce: dpopAuthserverNonce,
 		Resp:                rmap,
 	}, nil
 }

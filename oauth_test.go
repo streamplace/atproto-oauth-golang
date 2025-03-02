@@ -2,7 +2,6 @@ package oauth
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,19 +22,18 @@ var (
 )
 
 func newTestOauthClient() *OauthClient {
-	prefix := "testing"
-	testKey, err := GenerateKey(&prefix)
+	b, err := os.ReadFile("./jwks.json")
 	if err != nil {
 		panic(err)
 	}
 
-	b, err := json.Marshal(testKey)
+	k, err := ParseKeyFromBytes(b)
 	if err != nil {
 		panic(err)
 	}
 
 	c, err := NewOauthClient(OauthClientArgs{
-		ClientJwk:   b,
+		ClientJwk:   k,
 		ClientId:    serverMetadataUrl,
 		RedirectUri: serverCallbackUrl,
 	})
@@ -86,4 +84,29 @@ func TestGenerateKey(t *testing.T) {
 	prefix := "testing"
 	_, err := GenerateKey(&prefix)
 	assert.NoError(err)
+}
+
+func TestSendParAuthRequest(t *testing.T) {
+	assert := assert.New(t)
+
+	authserverUrl, err := oauthClient.ResolvePDSAuthServer(ctx, pdsUrl)
+	meta, err := oauthClient.FetchAuthServerMetadata(ctx, pdsUrl)
+	if err != nil {
+		panic(err)
+	}
+
+	prefix := "testing"
+	dpopPriv, err := GenerateKey(&prefix)
+	if err != nil {
+		panic(err)
+	}
+
+	parResp, err := oauthClient.SendParAuthRequest(ctx, authserverUrl, meta, "transition:generic", "atproto", dpopPriv)
+	if err != nil {
+		panic(err)
+	}
+
+	assert.NoError(err)
+	assert.Equal(float64(299), parResp.Resp["expires_in"])
+	assert.NotEmpty(parResp.Resp["request_uri"])
 }
