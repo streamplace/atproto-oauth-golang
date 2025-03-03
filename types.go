@@ -8,8 +8,13 @@ import (
 )
 
 type TokenResponse struct {
-	DpopAuthserverNonce string
-	Resp                map[string]any
+	DpopAuthserverNonce string `json:"-"`
+	AccessToken         string `json:"access_token"`
+	RefreshToken        string `json:"refresh_token"`
+	ExpiresIn           int    `json:"expires_in"`
+	Scope               string `json:"scope"`
+	Sub                 string `json:"sub"`
+	TokenType           string `json:"token_type"`
 }
 
 type RefreshTokenArgs struct {

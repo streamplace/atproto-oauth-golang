@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"time"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	"github.com/gorilla/sessions"
@@ -160,7 +161,6 @@ func (s *TestServer) handleCallback(e echo.Context) error {
 		e.Request().Context(),
 		resCode,
 		resIss,
-		resIss,
 		oauthRequest.PkceVerifier,
 		oauthRequest.DpopAuthserverNonce,
 		jwk,
@@ -171,7 +171,7 @@ func (s *TestServer) handleCallback(e echo.Context) error {
 
 	// TODO: resolve if needed
 
-	if initialTokenResp.Resp["scope"] != scope {
+	if initialTokenResp.Scope != scope {
 		return fmt.Errorf("did not receive correct scopes from token request")
 	}
 
@@ -179,10 +179,11 @@ func (s *TestServer) handleCallback(e echo.Context) error {
 		Did:                 oauthRequest.Did,
 		PdsUrl:              oauthRequest.PdsUrl,
 		AuthserverIss:       oauthRequest.AuthserverIss,
-		AccessToken:         initialTokenResp.Resp["access_token"].(string),
-		RefreshToken:        initialTokenResp.Resp["refresh_token"].(string),
+		AccessToken:         initialTokenResp.AccessToken,
+		RefreshToken:        initialTokenResp.RefreshToken,
 		DpopAuthserverNonce: initialTokenResp.DpopAuthserverNonce,
 		DpopPrivateJwk:      oauthRequest.DpopPrivateJwk,
+		Expiration:          time.Now().Add(time.Duration(int(time.Second) * int(initialTokenResp.ExpiresIn))),
 	}
 
 	if err := s.db.Clauses(clause.OnConflict{

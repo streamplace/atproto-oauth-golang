@@ -205,22 +205,6 @@ func (s *TestServer) handleJwks(e echo.Context) error {
 	return e.JSON(200, s.jwksResponse)
 }
 
-func authedReqArgsFromSession(session *OauthSession) (*oauth.XrpcAuthedRequestArgs, error) {
-	privateJwk, err := oauth.ParseKeyFromBytes([]byte(session.DpopPrivateJwk))
-	if err != nil {
-		return nil, err
-	}
-
-	return &oauth.XrpcAuthedRequestArgs{
-		Did:            session.Did,
-		AccessToken:    session.AccessToken,
-		PdsUrl:         session.PdsUrl,
-		Issuer:         session.AuthserverIss,
-		DpopPdsNonce:   session.DpopPdsNonce,
-		DpopPrivateJwk: privateJwk,
-	}, nil
-}
-
 func getFilePath(file string) string {
 	return fmt.Sprintf("%s/%s", staticFilePath, file)
 }

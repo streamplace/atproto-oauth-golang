@@ -21,14 +21,12 @@ func resolveHandle(ctx context.Context, handle string) (string, error) {
 	}
 
 	recs, err := net.LookupTXT(fmt.Sprintf("_atproto.%s", handle))
-	if err != nil {
-		return "", err
-	}
-
-	for _, rec := range recs {
-		if strings.HasPrefix(rec, "did=") {
-			did = strings.Split(rec, "did=")[1]
-			break
+	if err == nil {
+		for _, rec := range recs {
+			if strings.HasPrefix(rec, "did=") {
+				did = strings.Split(rec, "did=")[1]
+				break
+			}
 		}
 	}
 

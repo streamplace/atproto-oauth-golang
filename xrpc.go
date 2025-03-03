@@ -211,9 +211,8 @@ func (c *XrpcClient) Do(ctx context.Context, authedArgs *XrpcAuthedRequestArgs, 
 
 			// if we get a new nonce, update the nonce and make the request again
 			if (resp.StatusCode == 400 || resp.StatusCode == 401) && xe.ErrStr == "use_dpop_nonce" {
-				newNonce := resp.Header.Get("DPoP-Nonce")
-				c.OnDPoPNonceChanged(authedArgs.Did, newNonce)
-				authedArgs.DpopPdsNonce = newNonce
+				authedArgs.DpopPdsNonce = resp.Header.Get("DPoP-Nonce")
+				c.OnDPoPNonceChanged(authedArgs.Did, authedArgs.DpopPdsNonce)
 				continue
 			}
 
@@ -240,7 +239,7 @@ func (c *XrpcClient) Do(ctx context.Context, authedArgs *XrpcAuthedRequestArgs, 
 			}
 		}
 
-		break
+		return nil
 	}
 
 	return nil

@@ -333,7 +333,6 @@ func (c *Client) SendParAuthRequest(ctx context.Context, authServerUrl string, a
 func (c *Client) InitialTokenRequest(
 	ctx context.Context,
 	code,
-	appUrl,
 	authserverIss,
 	pkceVerifier,
 	dpopAuthserverNonce string,
@@ -359,22 +358,12 @@ func (c *Client) InitialTokenRequest(
 		"client_assertion":      {clientAssertion},
 	}
 
-	dpopProof, err := c.AuthServerDpopJwt(
-		"POST",
-		authserverMeta.TokenEndpoint,
-		dpopAuthserverNonce,
-		dpopPrivateJwk,
-	)
+	dpopProof, err := c.AuthServerDpopJwt("POST", authserverMeta.TokenEndpoint, dpopAuthserverNonce, dpopPrivateJwk)
 	if err != nil {
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(
-		ctx,
-		"POST",
-		authserverMeta.TokenEndpoint,
-		strings.NewReader(params.Encode()),
-	)
+	req, err := http.NewRequestWithContext(ctx, "POST", authserverMeta.TokenEndpoint, strings.NewReader(params.Encode()))
 	if err != nil {
 		return nil, err
 	}
@@ -388,81 +377,88 @@ func (c *Client) InitialTokenRequest(
 	}
 	defer resp.Body.Close()
 
-	var rmap map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&rmap); err != nil {
+	var tokenResponse TokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResponse); err != nil {
 		return nil, err
 	}
 
-	return &TokenResponse{
-		DpopAuthserverNonce: dpopAuthserverNonce,
-		Resp:                rmap,
-	}, nil
+	tokenResponse.DpopAuthserverNonce = dpopAuthserverNonce
+
+	return &tokenResponse, nil
 }
 
-func (c *Client) RefreshTokenRequest(ctx context.Context, authserverUrl, refreshToken, dpopAuthserverNonce string, dpopPrivateJwk jwk.Key) (*TokenResponse, error) {
-	authserverMeta, err := c.FetchAuthServerMetadata(ctx, authserverUrl)
-	if err != nil {
-		return nil, err
+func (c *Client) RefreshTokenRequest(
+	ctx context.Context,
+	refreshToken,
+	authserverIss,
+	dpopAuthserverNonce string,
+	dpopPrivateJwk jwk.Key,
+) (*TokenResponse, error) {
+	// we may need to update the dpop nonce
+	for range 2 {
+		authserverMeta, err := c.FetchAuthServerMetadata(ctx, authserverIss)
+		if err != nil {
+			return nil, err
+		}
+
+		clientAssertion, err := c.ClientAssertionJwt(authserverIss)
+		if err != nil {
+			return nil, err
+		}
+
+		params := url.Values{
+			"client_id":             {c.clientId},
+			"grant_type":            {"refresh_token"},
+			"refresh_token":         {refreshToken},
+			"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
+			"client_assertion":      {clientAssertion},
+		}
+
+		dpopProof, err := c.AuthServerDpopJwt("POST", authserverMeta.TokenEndpoint, dpopAuthserverNonce, dpopPrivateJwk)
+		if err != nil {
+			return nil, err
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "POST", authserverMeta.TokenEndpoint, strings.NewReader(params.Encode()))
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("DPoP", dpopProof)
+
+		resp, err := c.h.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 200 && resp.StatusCode != 201 {
+			var respMap map[string]string
+			if err := json.NewDecoder(resp.Body).Decode(&respMap); err != nil {
+				return nil, err
+			}
+
+			if resp.StatusCode == 400 && respMap["error"] == "use_dpop_nonce" {
+				dpopAuthserverNonce = resp.Header.Get("DPoP-Nonce")
+				continue
+			}
+
+			return nil, fmt.Errorf("token refresh error: %s", respMap["error"])
+		}
+
+		var tokenResponse TokenResponse
+		if err := json.NewDecoder(resp.Body).Decode(&tokenResponse); err != nil {
+			return nil, err
+		}
+
+		// set the nonce so that updates are reflected in response
+		tokenResponse.DpopAuthserverNonce = dpopAuthserverNonce
+
+		return &tokenResponse, nil
 	}
 
-	clientAssertion, err := c.ClientAssertionJwt(authserverUrl)
-	if err != nil {
-		return nil, err
-	}
-
-	params := url.Values{
-		"client_id":             {c.clientId},
-		"grant_type":            {"refresh_token"},
-		"refresh_token":         {refreshToken},
-		"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-		"client_assertion":      {clientAssertion},
-	}
-
-	dpopProof, err := c.AuthServerDpopJwt(
-		"POST",
-		authserverMeta.TokenEndpoint,
-		dpopAuthserverNonce,
-		dpopPrivateJwk,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequestWithContext(
-		ctx,
-		"POST",
-		authserverMeta.TokenEndpoint,
-		strings.NewReader(params.Encode()),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("DPoP", dpopProof)
-
-	resp, err := c.h.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	// TODO: handle same thing as above...
-
-	if resp.StatusCode != 200 && resp.StatusCode != 201 {
-		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("token refresh error: %s", string(b))
-	}
-
-	var rmap map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&rmap); err != nil {
-		return nil, err
-	}
-
-	return &TokenResponse{
-		DpopAuthserverNonce: dpopAuthserverNonce,
-		Resp:                rmap,
-	}, nil
+	return nil, nil
 }
 
 func generateToken(len int) (string, error) {

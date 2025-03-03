@@ -1,5 +1,7 @@
 package main
 
+import "time"
+
 type OauthRequest struct {
 	ID                  uint
 	AuthserverIss       string
@@ -21,4 +23,5 @@ type OauthSession struct {
 	DpopPdsNonce        string
 	DpopAuthserverNonce string
 	DpopPrivateJwk      string
+	Expiration          time.Time
 }
