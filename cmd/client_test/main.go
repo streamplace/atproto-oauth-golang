@@ -155,6 +155,7 @@ func (s *TestServer) run() error {
 	s.e.File("/login", getFilePath("login.html"))
 	s.e.POST("/login", s.handleLoginSubmit)
 	s.e.GET("/logout", s.handleLogout)
+	s.e.GET("/profile", s.handleProfile)
 	s.e.GET("/make-post", s.handleMakePost)
 	s.e.GET("/callback", s.handleCallback)
 	s.e.GET("/oauth/client-metadata.json", s.handleClientMetadata)
