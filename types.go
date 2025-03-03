@@ -28,7 +28,8 @@ type SendParAuthResponse struct {
 	PkceVerifier        string
 	State               string
 	DpopAuthserverNonce string
-	Resp                map[string]any
+	ExpiresIn           float64
+	RequestUri          string
 }
 
 type OauthProtectedResource struct {

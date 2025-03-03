@@ -16,13 +16,14 @@ import (
 )
 
 func (s *TestServer) handleLoginSubmit(e echo.Context) error {
-	authInput := e.FormValue("auth-input")
+	authInput := strings.ToLower(e.FormValue("auth-input"))
 	if authInput == "" {
 		return e.Redirect(302, "/login?e=auth-input-empty")
 	}
 
 	var service string
 	var did string
+	var loginHint string
 
 	if strings.HasPrefix("https://", authInput) {
 		u, err := url.Parse(authInput)
@@ -57,9 +58,10 @@ func (s *TestServer) handleLoginSubmit(e echo.Context) error {
 		}
 
 		service = maybeService
+		loginHint = authInput
 	}
 
-	authserver, err := s.oauthClient.ResolvePDSAuthServer(ctx, service)
+	authserver, err := s.oauthClient.ResolvePdsAuthServer(ctx, service)
 	if err != nil {
 		return err
 	}
@@ -79,14 +81,10 @@ func (s *TestServer) handleLoginSubmit(e echo.Context) error {
 		return err
 	}
 
-	parResp, err := s.oauthClient.SendParAuthRequest(
-		ctx,
-		authserver,
-		meta,
-		"",
-		scope,
-		dpopPrivateKey,
-	)
+	parResp, err := s.oauthClient.SendParAuthRequest(ctx, authserver, meta, loginHint, scope, dpopPrivateKey)
+	if err != nil {
+		return err
+	}
 
 	oauthRequest := &OauthRequest{
 		State:               parResp.State,
@@ -103,11 +101,7 @@ func (s *TestServer) handleLoginSubmit(e echo.Context) error {
 	}
 
 	u, _ := url.Parse(meta.AuthorizationEndpoint)
-	u.RawQuery = fmt.Sprintf(
-		"client_id=%s&request_uri=%s",
-		url.QueryEscape(serverMetadataUrl),
-		parResp.Resp["request_uri"].(string),
-	)
+	u.RawQuery = fmt.Sprintf("client_id=%s&request_uri=%s", url.QueryEscape(serverMetadataUrl), parResp.RequestUri)
 
 	sess, err := session.Get("session", e)
 	if err != nil {
@@ -165,7 +159,7 @@ func (s *TestServer) handleCallback(e echo.Context) error {
 		return fmt.Errorf("incoming iss did not match authserver iss")
 	}
 
-	jwk, err := oauth.ParseKeyFromBytes([]byte(oauthRequest.DpopPrivateJwk))
+	jwk, err := oauth.ParseJWKFromBytes([]byte(oauthRequest.DpopPrivateJwk))
 	if err != nil {
 		return err
 	}

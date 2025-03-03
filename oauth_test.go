@@ -27,7 +27,7 @@ func newTestOauthClient() *Client {
 		panic(err)
 	}
 
-	k, err := ParseKeyFromBytes(b)
+	k, err := ParseJWKFromBytes(b)
 	if err != nil {
 		panic(err)
 	}
@@ -61,7 +61,7 @@ func newTestOauthClient() *Client {
 func TestResolvePDSAuthServer(t *testing.T) {
 	assert := assert.New(t)
 
-	authServer, err := oauthClient.ResolvePDSAuthServer(ctx, pdsUrl)
+	authServer, err := oauthClient.ResolvePdsAuthServer(ctx, pdsUrl)
 
 	assert.NoError(err)
 	assert.NotEmpty(authServer)
@@ -88,7 +88,7 @@ func TestGenerateKey(t *testing.T) {
 func TestSendParAuthRequest(t *testing.T) {
 	assert := assert.New(t)
 
-	authserverUrl, err := oauthClient.ResolvePDSAuthServer(ctx, pdsUrl)
+	authserverUrl, err := oauthClient.ResolvePdsAuthServer(ctx, pdsUrl)
 	meta, err := oauthClient.FetchAuthServerMetadata(ctx, pdsUrl)
 	if err != nil {
 		panic(err)
@@ -106,6 +106,6 @@ func TestSendParAuthRequest(t *testing.T) {
 	}
 
 	assert.NoError(err)
-	assert.Equal(float64(299), parResp.Resp["expires_in"])
-	assert.NotEmpty(parResp.Resp["request_uri"])
+	assert.Equal(float64(299), parResp.ExpiresIn)
+	assert.NotEmpty(parResp.RequestUri)
 }

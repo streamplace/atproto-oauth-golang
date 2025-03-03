@@ -21,7 +21,7 @@ func (s *TestServer) getOauthSession(ctx context.Context, did string) (*OauthSes
 	}
 
 	if oauthSession.Expiration.Sub(time.Now()) <= 5*time.Minute {
-		privateJwk, err := oauth.ParseKeyFromBytes([]byte(oauthSession.DpopPrivateJwk))
+		privateJwk, err := oauth.ParseJWKFromBytes([]byte(oauthSession.DpopPrivateJwk))
 		if err != nil {
 			return nil, err
 		}
@@ -59,7 +59,7 @@ func (s *TestServer) getOauthSessionAuthArgs(e echo.Context) (*oauth.XrpcAuthedR
 
 	oauthSession, err := s.getOauthSession(e.Request().Context(), did)
 
-	privateJwk, err := oauth.ParseKeyFromBytes([]byte(oauthSession.DpopPrivateJwk))
+	privateJwk, err := oauth.ParseJWKFromBytes([]byte(oauthSession.DpopPrivateJwk))
 	if err != nil {
 		return nil, false, err
 	}

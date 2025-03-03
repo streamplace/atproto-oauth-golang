@@ -62,7 +62,7 @@ func NewClient(args ClientArgs) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) ResolvePDSAuthServer(ctx context.Context, ustr string) (string, error) {
+func (c *Client) ResolvePdsAuthServer(ctx context.Context, ustr string) (string, error) {
 	u, err := isSafeAndParsed(ustr)
 	if err != nil {
 		return "", err
@@ -234,7 +234,7 @@ func (c *Client) SendParAuthRequest(ctx context.Context, authServerUrl string, a
 
 	clientAssertion, err := c.ClientAssertionJwt(authServerUrl)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error getting client assertion: %w", err)
 	}
 
 	dpopAuthserverNonce := ""
@@ -283,35 +283,43 @@ func (c *Client) SendParAuthRequest(ctx context.Context, authServerUrl string, a
 		return nil, err
 	}
 
-	if resp.StatusCode == 400 && rmap["error"] == "use_dpop_nonce" {
-		dpopAuthserverNonce = resp.Header.Get("DPoP-Nonce")
-		dpopProof, err := c.AuthServerDpopJwt("POST", parUrl, dpopAuthserverNonce, dpopPrivateKey)
-		if err != nil {
-			return nil, err
-		}
+	if resp.StatusCode != 201 {
+		if resp.StatusCode == 400 && rmap["error"] == "use_dpop_nonce" {
+			dpopAuthserverNonce = resp.Header.Get("DPoP-Nonce")
+			dpopProof, err := c.AuthServerDpopJwt("POST", parUrl, dpopAuthserverNonce, dpopPrivateKey)
+			if err != nil {
+				return nil, err
+			}
 
-		req2, err := http.NewRequestWithContext(
-			ctx,
-			"POST",
-			parUrl,
-			strings.NewReader(params.Encode()),
-		)
-		if err != nil {
-			return nil, err
-		}
+			req2, err := http.NewRequestWithContext(
+				ctx,
+				"POST",
+				parUrl,
+				strings.NewReader(params.Encode()),
+			)
+			if err != nil {
+				return nil, err
+			}
 
-		req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		req2.Header.Set("DPoP", dpopProof)
+			req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req2.Header.Set("DPoP", dpopProof)
 
-		resp2, err := c.h.Do(req2)
-		if err != nil {
-			return nil, err
-		}
-		defer resp2.Body.Close()
+			resp2, err := c.h.Do(req2)
+			if err != nil {
+				return nil, err
+			}
+			defer resp2.Body.Close()
 
-		rmap = map[string]any{}
-		if err := json.NewDecoder(resp2.Body).Decode(&rmap); err != nil {
-			return nil, err
+			rmap = map[string]any{}
+			if err := json.NewDecoder(resp2.Body).Decode(&rmap); err != nil {
+				return nil, err
+			}
+
+			if resp2.StatusCode != 201 {
+				return nil, fmt.Errorf("received error from server when submitting par request: %s", rmap["error"])
+			}
+		} else {
+			return nil, fmt.Errorf("received error from server when submitting par request: %s", rmap["error"])
 		}
 	}
 
@@ -319,7 +327,8 @@ func (c *Client) SendParAuthRequest(ctx context.Context, authServerUrl string, a
 		PkceVerifier:        pkceVerifier,
 		State:               state,
 		DpopAuthserverNonce: dpopAuthserverNonce,
-		Resp:                rmap,
+		ExpiresIn:           rmap["expires_in"].(float64),
+		RequestUri:          rmap["request_uri"].(string),
 	}, nil
 }
 

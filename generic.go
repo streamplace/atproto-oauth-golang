@@ -92,7 +92,7 @@ func CreateJwksResponseObject(key jwk.Key) *JwksResponseObject {
 	}
 }
 
-func ParseKeyFromBytes(b []byte) (jwk.Key, error) {
+func ParseJWKFromBytes(b []byte) (jwk.Key, error) {
 	return jwk.ParseKey(b)
 }
 

@@ -39,5 +39,9 @@ test-server: ## Run the test server
 test-jwks: ## Create a test jwks file
 	go run ./cmd/cmd generate-jwks --prefix demo
 
+.PHONY: jwks
+jwks:
+	go run ./cmd/cmd generate-jwks
+
 .env:
 	if [ ! -f ".env" ]; then cp example.dev.env .env; fi

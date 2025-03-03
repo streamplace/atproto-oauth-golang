@@ -14,7 +14,6 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
-	"github.com/lestrrat-go/jwx/v2/jwk"
 	slogecho "github.com/samber/slog-echo"
 	"github.com/urfave/cli/v2"
 	"gorm.io/driver/sqlite"
@@ -101,7 +100,7 @@ func NewServer() (*TestServer, error) {
 		return nil, err
 	}
 
-	k, err := jwk.ParseKey(b)
+	k, err := oauth.ParseJWKFromBytes(b)
 	if err != nil {
 		return nil, err
 	}
