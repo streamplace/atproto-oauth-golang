@@ -4,7 +4,27 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"slices"
 )
+
+type TokenResponse struct {
+	DpopAuthserverNonce string
+	Resp                map[string]any
+}
+
+type RefreshTokenArgs struct {
+	AuthserverUrl       string
+	RefreshToken        string
+	DpopPrivateJwk      string
+	DpopAuthserverNonce string
+}
+
+type SendParAuthResponse struct {
+	PkceVerifier        string
+	State               string
+	DpopAuthserverNonce string
+	Resp                map[string]any
+}
 
 type OauthProtectedResource struct {
 	Resource               string   `json:"resource"`
@@ -58,6 +78,19 @@ type OauthAuthorizationMetadata struct {
 	ClientIDMetadataDocumentSupported          bool     `json:"client_id_metadata_document_supported"`
 }
 
+func (oam *OauthAuthorizationMetadata) UnmarshalJSON(b []byte) error {
+	type Tmp OauthAuthorizationMetadata
+	var tmp Tmp
+
+	if err := json.Unmarshal(b, &tmp); err != nil {
+		return err
+	}
+
+	*oam = OauthAuthorizationMetadata(tmp)
+
+	return nil
+}
+
 func (oam *OauthAuthorizationMetadata) Validate(fetch_url *url.URL) error {
 	if fetch_url == nil {
 		return fmt.Errorf("fetch_url was nil")
@@ -88,35 +121,35 @@ func (oam *OauthAuthorizationMetadata) Validate(fetch_url *url.URL) error {
 		return fmt.Errorf("issuer url params are not empty")
 	}
 
-	if !tokenInSet("code", oam.ResponseTypesSupported) {
+	if !slices.Contains(oam.ResponseTypesSupported, "code") {
 		return fmt.Errorf("`code` is not in response_types_supported")
 	}
 
-	if !tokenInSet("authorization_code", oam.GrantTypesSupported) {
+	if !slices.Contains(oam.GrantTypesSupported, "authorization_code") {
 		return fmt.Errorf("`authorization_code` is not in grant_types_supported")
 	}
 
-	if !tokenInSet("refresh_token", oam.GrantTypesSupported) {
+	if !slices.Contains(oam.GrantTypesSupported, "refresh_token") {
 		return fmt.Errorf("`refresh_token` is not in grant_types_supported")
 	}
 
-	if !tokenInSet("S256", oam.CodeChallengeMethodsSupported) {
+	if !slices.Contains(oam.CodeChallengeMethodsSupported, "S256") {
 		return fmt.Errorf("`S256` is not in code_challenge_methods_supported")
 	}
 
-	if !tokenInSet("none", oam.TokenEndpointAuthMethodsSupported) {
+	if !slices.Contains(oam.TokenEndpointAuthMethodsSupported, "none") {
 		return fmt.Errorf("`none` is not in token_endpoint_auth_methods_supported")
 	}
 
-	if !tokenInSet("private_key_jwt", oam.TokenEndpointAuthMethodsSupported) {
+	if !slices.Contains(oam.TokenEndpointAuthMethodsSupported, "private_key_jwt") {
 		return fmt.Errorf("`private_key_jwt` is not in token_endpoint_auth_methods_supported")
 	}
 
-	if !tokenInSet("ES256", oam.TokenEndpointAuthSigningAlgValuesSupported) {
+	if !slices.Contains(oam.TokenEndpointAuthSigningAlgValuesSupported, "ES256") {
 		return fmt.Errorf("`ES256` is not in token_endpoint_auth_signing_alg_values_supported")
 	}
 
-	if !tokenInSet("atproto", oam.ScopesSupported) {
+	if !slices.Contains(oam.ScopesSupported, "atproto") {
 		return fmt.Errorf("`atproto` is not in scopes_supported")
 	}
 
@@ -132,7 +165,7 @@ func (oam *OauthAuthorizationMetadata) Validate(fetch_url *url.URL) error {
 		return fmt.Errorf("require_pushed_authorization_requests is false")
 	}
 
-	if !tokenInSet("ES256", oam.DpopSigningAlgValuesSupported) {
+	if !slices.Contains(oam.DpopSigningAlgValuesSupported, "ES256") {
 		return fmt.Errorf("`ES256` is not in dpop_signing_alg_values_supported")
 	}
 
@@ -143,19 +176,6 @@ func (oam *OauthAuthorizationMetadata) Validate(fetch_url *url.URL) error {
 	if oam.ClientIDMetadataDocumentSupported == false {
 		return fmt.Errorf("client_id_metadata_document_supported was false")
 	}
-
-	return nil
-}
-
-func (oam *OauthAuthorizationMetadata) UnmarshalJSON(b []byte) error {
-	type Tmp OauthAuthorizationMetadata
-	var tmp Tmp
-
-	if err := json.Unmarshal(b, &tmp); err != nil {
-		return err
-	}
-
-	*oam = OauthAuthorizationMetadata(tmp)
 
 	return nil
 }

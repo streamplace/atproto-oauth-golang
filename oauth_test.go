@@ -21,7 +21,7 @@ var (
 	pdsUrl            = os.Getenv("OAUTH_TEST_PDS_URL")
 )
 
-func newTestOauthClient() *OauthClient {
+func newTestOauthClient() *Client {
 	b, err := os.ReadFile("./jwks.json")
 	if err != nil {
 		panic(err)
@@ -32,7 +32,7 @@ func newTestOauthClient() *OauthClient {
 		panic(err)
 	}
 
-	c, err := NewOauthClient(OauthClientArgs{
+	c, err := NewClient(ClientArgs{
 		ClientJwk:   k,
 		ClientId:    serverMetadataUrl,
 		RedirectUri: serverCallbackUrl,

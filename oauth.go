@@ -20,7 +20,7 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwk"
 )
 
-type OauthClient struct {
+type Client struct {
 	h                *http.Client
 	clientPrivateKey *ecdsa.PrivateKey
 	clientKid        string
@@ -28,14 +28,14 @@ type OauthClient struct {
 	redirectUri      string
 }
 
-type OauthClientArgs struct {
+type ClientArgs struct {
 	H           *http.Client
 	ClientJwk   jwk.Key
 	ClientId    string
 	RedirectUri string
 }
 
-func NewOauthClient(args OauthClientArgs) (*OauthClient, error) {
+func NewClient(args ClientArgs) (*Client, error) {
 	if args.ClientId == "" {
 		return nil, fmt.Errorf("no client id provided")
 	}
@@ -57,7 +57,7 @@ func NewOauthClient(args OauthClientArgs) (*OauthClient, error) {
 
 	kid := args.ClientJwk.KeyID()
 
-	return &OauthClient{
+	return &Client{
 		h:                args.H,
 		clientKid:        kid,
 		clientPrivateKey: clientPkey,
@@ -66,7 +66,7 @@ func NewOauthClient(args OauthClientArgs) (*OauthClient, error) {
 	}, nil
 }
 
-func (c *OauthClient) ResolvePDSAuthServer(ctx context.Context, ustr string) (string, error) {
+func (c *Client) ResolvePDSAuthServer(ctx context.Context, ustr string) (string, error) {
 	u, err := isSafeAndParsed(ustr)
 	if err != nil {
 		return "", err
@@ -107,10 +107,7 @@ func (c *OauthClient) ResolvePDSAuthServer(ctx context.Context, ustr string) (st
 	return resource.AuthorizationServers[0], nil
 }
 
-func (c *OauthClient) FetchAuthServerMetadata(
-	ctx context.Context,
-	ustr string,
-) (*OauthAuthorizationMetadata, error) {
+func (c *Client) FetchAuthServerMetadata(ctx context.Context, ustr string) (*OauthAuthorizationMetadata, error) {
 	u, err := isSafeAndParsed(ustr)
 	if err != nil {
 		return nil, err
@@ -154,7 +151,7 @@ func (c *OauthClient) FetchAuthServerMetadata(
 	return &metadata, nil
 }
 
-func (c *OauthClient) ClientAssertionJwt(authServerUrl string) (string, error) {
+func (c *Client) ClientAssertionJwt(authServerUrl string) (string, error) {
 	claims := jwt.MapClaims{
 		"iss": c.clientId,
 		"sub": c.clientId,
@@ -174,7 +171,7 @@ func (c *OauthClient) ClientAssertionJwt(authServerUrl string) (string, error) {
 	return tokenString, nil
 }
 
-func (c *OauthClient) AuthServerDpopJwt(method, url, nonce string, privateJwk jwk.Key) (string, error) {
+func (c *Client) AuthServerDpopJwt(method, url, nonce string, privateJwk jwk.Key) (string, error) {
 	pubJwk, err := privateJwk.PublicKey()
 	if err != nil {
 		return "", err
@@ -222,14 +219,7 @@ func (c *OauthClient) AuthServerDpopJwt(method, url, nonce string, privateJwk jw
 	return tokenString, nil
 }
 
-type SendParAuthResponse struct {
-	PkceVerifier        string
-	State               string
-	DpopAuthserverNonce string
-	Resp                map[string]any
-}
-
-func (c *OauthClient) SendParAuthRequest(ctx context.Context, authServerUrl string, authServerMeta *OauthAuthorizationMetadata, loginHint, scope string, dpopPrivateKey jwk.Key) (*SendParAuthResponse, error) {
+func (c *Client) SendParAuthRequest(ctx context.Context, authServerUrl string, authServerMeta *OauthAuthorizationMetadata, loginHint, scope string, dpopPrivateKey jwk.Key) (*SendParAuthResponse, error) {
 	if authServerMeta == nil {
 		return nil, fmt.Errorf("nil metadata provided")
 	}
@@ -330,8 +320,6 @@ func (c *OauthClient) SendParAuthRequest(ctx context.Context, authServerUrl stri
 		if err := json.NewDecoder(resp2.Body).Decode(&rmap); err != nil {
 			return nil, err
 		}
-
-		fmt.Println(rmap)
 	}
 
 	return &SendParAuthResponse{
@@ -342,12 +330,7 @@ func (c *OauthClient) SendParAuthRequest(ctx context.Context, authServerUrl stri
 	}, nil
 }
 
-type TokenResponse struct {
-	DpopAuthserverNonce string
-	Resp                map[string]any
-}
-
-func (c *OauthClient) InitialTokenRequest(
+func (c *Client) InitialTokenRequest(
 	ctx context.Context,
 	code,
 	appUrl,
@@ -405,8 +388,6 @@ func (c *OauthClient) InitialTokenRequest(
 	}
 	defer resp.Body.Close()
 
-	// TODO: use nonce if needed, same as in par
-
 	var rmap map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&rmap); err != nil {
 		return nil, err
@@ -418,24 +399,13 @@ func (c *OauthClient) InitialTokenRequest(
 	}, nil
 }
 
-type RefreshTokenArgs struct {
-	AuthserverUrl       string
-	RefreshToken        string
-	DpopPrivateJwk      string
-	DpopAuthserverNonce string
-}
-
-func (c *OauthClient) RefreshTokenRequest(
-	ctx context.Context,
-	args RefreshTokenArgs,
-	appUrl string,
-) (any, error) {
-	authserverMeta, err := c.FetchAuthServerMetadata(ctx, args.AuthserverUrl)
+func (c *Client) RefreshTokenRequest(ctx context.Context, authserverUrl, refreshToken, dpopAuthserverNonce string, dpopPrivateJwk jwk.Key) (*TokenResponse, error) {
+	authserverMeta, err := c.FetchAuthServerMetadata(ctx, authserverUrl)
 	if err != nil {
 		return nil, err
 	}
 
-	clientAssertion, err := c.ClientAssertionJwt(args.AuthserverUrl)
+	clientAssertion, err := c.ClientAssertionJwt(authserverUrl)
 	if err != nil {
 		return nil, err
 	}
@@ -443,20 +413,15 @@ func (c *OauthClient) RefreshTokenRequest(
 	params := url.Values{
 		"client_id":             {c.clientId},
 		"grant_type":            {"refresh_token"},
-		"refresh_token":         {args.RefreshToken},
+		"refresh_token":         {refreshToken},
 		"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
 		"client_assertion":      {clientAssertion},
-	}
-
-	dpopPrivateJwk, err := parsePrivateJwkFromString(args.DpopPrivateJwk)
-	if err != nil {
-		return nil, err
 	}
 
 	dpopProof, err := c.AuthServerDpopJwt(
 		"POST",
 		authserverMeta.TokenEndpoint,
-		args.DpopAuthserverNonce,
+		dpopAuthserverNonce,
 		dpopPrivateJwk,
 	)
 	if err != nil {
@@ -495,7 +460,7 @@ func (c *OauthClient) RefreshTokenRequest(
 	}
 
 	return &TokenResponse{
-		DpopAuthserverNonce: args.DpopAuthserverNonce,
+		DpopAuthserverNonce: dpopAuthserverNonce,
 		Resp:                rmap,
 	}, nil
 }

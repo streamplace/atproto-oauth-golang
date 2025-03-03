@@ -4,6 +4,7 @@ go 1.24.0
 
 require (
 	github.com/bluesky-social/indigo v0.0.0-20250301025210-a4e0cc37e188
+	github.com/carlmjohnson/versioninfo v0.22.5
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/sessions v1.4.0
@@ -14,12 +15,12 @@ require (
 	github.com/samber/slog-echo v1.15.1
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v2 v2.27.5
+	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa
 	gorm.io/driver/sqlite v1.5.7
 	gorm.io/gorm v1.25.9
 )
 
 require (
-	github.com/carlmjohnson/versioninfo v0.22.5 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.5 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0 // indirect

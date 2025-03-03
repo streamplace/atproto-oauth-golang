@@ -50,7 +50,7 @@ type TestServer struct {
 	httpd        *http.Server
 	e            *echo.Echo
 	db           *gorm.DB
-	oauthClient  *oauth.OauthClient
+	oauthClient  *oauth.Client
 	xrpcCli      *oauth.XrpcClient
 	jwksResponse *oauth.JwksResponseObject
 }
@@ -111,7 +111,7 @@ func NewServer() (*TestServer, error) {
 		return nil, err
 	}
 
-	c, err := oauth.NewOauthClient(oauth.OauthClientArgs{
+	c, err := oauth.NewClient(oauth.ClientArgs{
 		ClientJwk:   k,
 		ClientId:    serverMetadataUrl,
 		RedirectUri: serverCallbackUrl,
