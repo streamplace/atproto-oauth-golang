@@ -254,7 +254,6 @@ func (c *OauthClient) SendParAuthRequest(ctx context.Context, authServerUrl stri
 		return nil, err
 	}
 
-	// TODO: ??
 	dpopAuthserverNonce := ""
 	dpopProof, err := c.AuthServerDpopJwt("POST", parUrl, dpopAuthserverNonce, dpopPrivateKey)
 	if err != nil {

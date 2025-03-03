@@ -27,6 +27,15 @@ type XrpcClient struct {
 	OnDPoPNonceChanged func(did, newNonce string)
 }
 
+type XrpcAuthedRequestArgs struct {
+	Did            string
+	PdsUrl         string
+	Issuer         string
+	AccessToken    string
+	DpopPdsNonce   string
+	DpopPrivateJwk jwk.Key
+}
+
 func (c *XrpcClient) getClient() *http.Client {
 	if c.Client == nil {
 		return util.RobustHTTPClient()
@@ -122,15 +131,6 @@ func PdsDpopJwt(method, url, iss, accessToken, nonce string, privateJwk jwk.Key)
 	}
 
 	return tokenString, nil
-}
-
-type XrpcAuthedRequestArgs struct {
-	Did            string
-	PdsUrl         string
-	Issuer         string
-	AccessToken    string
-	DpopPdsNonce   string
-	DpopPrivateJwk jwk.Key
 }
 
 func (c *XrpcClient) Do(ctx context.Context, authedArgs *XrpcAuthedRequestArgs, kind xrpc.XRPCRequestType, inpenc, method string, params map[string]any, bodyobj any, out any) error {
