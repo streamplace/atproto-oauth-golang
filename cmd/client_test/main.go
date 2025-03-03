@@ -133,7 +133,7 @@ func NewServer() (*TestServer, error) {
 	db.AutoMigrate(&OauthRequest{}, &OauthSession{})
 
 	xrpcCli := &oauth.XrpcClient{
-		OnDPoPNonceChanged: func(did, newNonce string) {
+		OnDpopPdsNonceChanged: func(did, newNonce string) {
 			if err := db.Exec("UPDATE oauth_sessions SET dpop_pds_nonce = ? WHERE did = ?", newNonce, did).Error; err != nil {
 				slog.Default().Error("error updating pds nonce", "err", err)
 			}

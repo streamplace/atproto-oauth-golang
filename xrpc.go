@@ -19,12 +19,19 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwk"
 )
 
+// This xrpc client is copied from the indigo xrpc client, with some tweaks:
+// - There is no `AuthInfo` on the client. Instead, you pass auth _with the request_ in the `Do()` function
+// - There is an `XrpcAuthedRequestArgs` struct that contains all the info you need to complete an authed request
+// - There is a `OnDpopPdsNonceChanged` callback that will run when the dpop nonce receives an update. You can
+//   use this to update a database, for example.
+// - Requests are retried whenever the dpop nonce changes
+
 type XrpcClient struct {
 	// Client is an HTTP client to use. If not set, defaults to http.RobustHTTPClient().
-	Client             *http.Client
-	UserAgent          *string
-	Headers            map[string]string
-	OnDPoPNonceChanged func(did, newNonce string)
+	Client                *http.Client
+	UserAgent             *string
+	Headers               map[string]string
+	OnDpopPdsNonceChanged func(did, newNonce string)
 }
 
 type XrpcAuthedRequestArgs struct {
@@ -212,7 +219,7 @@ func (c *XrpcClient) Do(ctx context.Context, authedArgs *XrpcAuthedRequestArgs, 
 			// if we get a new nonce, update the nonce and make the request again
 			if (resp.StatusCode == 400 || resp.StatusCode == 401) && xe.ErrStr == "use_dpop_nonce" {
 				authedArgs.DpopPdsNonce = resp.Header.Get("DPoP-Nonce")
-				c.OnDPoPNonceChanged(authedArgs.Did, authedArgs.DpopPdsNonce)
+				c.OnDpopPdsNonceChanged(authedArgs.Did, authedArgs.DpopPdsNonce)
 				continue
 			}
 
