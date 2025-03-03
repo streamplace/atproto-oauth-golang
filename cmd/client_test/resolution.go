@@ -84,7 +84,7 @@ func resolveService(ctx context.Context, did string) (string, error) {
 	if strings.HasPrefix(did, "did:plc:") {
 		ustr = fmt.Sprintf("https://plc.directory/%s", did)
 	} else if strings.HasPrefix(did, "did:web:") {
-		ustr = fmt.Sprintf("https://%s/.well-known/did.json", did)
+		ustr = fmt.Sprintf("https://%s/.well-known/did.json", strings.TrimPrefix(did, "did:web:"))
 	} else {
 		return "", fmt.Errorf("did was not a supported did type")
 	}
