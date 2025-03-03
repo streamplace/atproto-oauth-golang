@@ -15,7 +15,6 @@ require (
 	github.com/samber/slog-echo v1.15.1
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v2 v2.27.5
-	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa
 	gorm.io/driver/sqlite v1.5.7
 	gorm.io/gorm v1.25.9
 )

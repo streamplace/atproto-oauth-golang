@@ -6,6 +6,9 @@
 > [!WARNING]
 > You should always validate user input. The example/test code inside this repo may be used as an implementation guide, but no guarantees are made.
 
+```bash
+go get github.com/haileyok/atproto-oauth-golang
+```
 
 ## Prerequisites
 There are some prerequisites that you'll need to handle before implementing this OAuth client.
