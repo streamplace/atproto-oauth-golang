@@ -52,12 +52,12 @@ func (s *TestServer) getOauthSessionAuthArgs(e echo.Context) (*oauth.XrpcAuthedR
 		return nil, false, err
 	}
 
-	did, ok := sess.Values["did"]
+	did, ok := sess.Values["did"].(string)
 	if !ok {
 		return nil, false, nil
 	}
 
-	oauthSession, err := s.getOauthSession(e.Request().Context(), did.(string))
+	oauthSession, err := s.getOauthSession(e.Request().Context(), did)
 
 	privateJwk, err := oauth.ParseKeyFromBytes([]byte(oauthSession.DpopPrivateJwk))
 	if err != nil {

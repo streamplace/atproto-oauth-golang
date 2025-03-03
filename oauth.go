@@ -3,10 +3,6 @@ package oauth
 import (
 	"context"
 	"crypto/ecdsa"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,7 +25,7 @@ type Client struct {
 }
 
 type ClientArgs struct {
-	H           *http.Client
+	Http        *http.Client
 	ClientJwk   jwk.Key
 	ClientId    string
 	RedirectUri string
@@ -44,8 +40,8 @@ func NewClient(args ClientArgs) (*Client, error) {
 		return nil, fmt.Errorf("no redirect uri provided")
 	}
 
-	if args.H == nil {
-		args.H = &http.Client{
+	if args.Http == nil {
+		args.Http = &http.Client{
 			Timeout: 5 * time.Second,
 		}
 	}
@@ -58,7 +54,7 @@ func NewClient(args ClientArgs) (*Client, error) {
 	kid := args.ClientJwk.KeyID()
 
 	return &Client{
-		h:                args.H,
+		h:                args.Http,
 		clientKid:        kid,
 		clientPrivateKey: clientPkey,
 		clientId:         args.ClientId,
@@ -122,30 +118,27 @@ func (c *Client) FetchAuthServerMetadata(ctx context.Context, ustr string) (*Oau
 
 	resp, err := c.h.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error getting response for auth metadata: %w", err)
+		return nil, fmt.Errorf("error getting response for authserver metadata: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		io.Copy(io.Discard, resp.Body)
-		return nil, fmt.Errorf(
-			"received non-200 response from pds. status code was %d",
-			resp.StatusCode,
-		)
+		return nil, fmt.Errorf("received non-200 response from pds. status code was %d", resp.StatusCode)
 	}
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("could not read body for metadata response: %w", err)
+		return nil, fmt.Errorf("could not read body for authserver metadata response: %w", err)
 	}
 
 	var metadata OauthAuthorizationMetadata
 	if err := metadata.UnmarshalJSON(b); err != nil {
-		return nil, fmt.Errorf("could not unmarshal metadata: %w", err)
+		return nil, fmt.Errorf("could not unmarshal authserver metadata: %w", err)
 	}
 
 	if err := metadata.Validate(u); err != nil {
-		return nil, fmt.Errorf("could not validate metadata: %w", err)
+		return nil, fmt.Errorf("could not validate authserver metadata: %w", err)
 	}
 
 	return &metadata, nil
@@ -338,53 +331,73 @@ func (c *Client) InitialTokenRequest(
 	dpopAuthserverNonce string,
 	dpopPrivateJwk jwk.Key,
 ) (*TokenResponse, error) {
-	authserverMeta, err := c.FetchAuthServerMetadata(ctx, authserverIss)
-	if err != nil {
-		return nil, err
+	// we might need to re-run to update dpop nonce
+	for range 2 {
+		authserverMeta, err := c.FetchAuthServerMetadata(ctx, authserverIss)
+		if err != nil {
+			return nil, err
+		}
+
+		clientAssertion, err := c.ClientAssertionJwt(authserverIss)
+		if err != nil {
+			return nil, err
+		}
+
+		params := url.Values{
+			"client_id":             {c.clientId},
+			"redirect_uri":          {c.redirectUri},
+			"grant_type":            {"authorization_code"},
+			"code":                  {code},
+			"code_verifier":         {pkceVerifier},
+			"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
+			"client_assertion":      {clientAssertion},
+		}
+
+		dpopProof, err := c.AuthServerDpopJwt("POST", authserverMeta.TokenEndpoint, dpopAuthserverNonce, dpopPrivateJwk)
+		if err != nil {
+			return nil, err
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "POST", authserverMeta.TokenEndpoint, strings.NewReader(params.Encode()))
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("DPoP", dpopProof)
+
+		resp, err := c.h.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 200 && resp.StatusCode != 201 {
+			var respMap map[string]string
+			if err := json.NewDecoder(resp.Body).Decode(&respMap); err != nil {
+				return nil, err
+			}
+
+			if resp.StatusCode == 400 && respMap["error"] == "use_dpop_nonce" {
+				dpopAuthserverNonce = resp.Header.Get("DPoP-Nonce")
+				continue
+			}
+
+			return nil, fmt.Errorf("token refresh error: %s", respMap["error"])
+		}
+
+		var tokenResponse TokenResponse
+		if err := json.NewDecoder(resp.Body).Decode(&tokenResponse); err != nil {
+			return nil, err
+		}
+
+		// set nonce so the updates are reflected in the response
+		tokenResponse.DpopAuthserverNonce = dpopAuthserverNonce
+
+		return &tokenResponse, nil
 	}
 
-	clientAssertion, err := c.ClientAssertionJwt(authserverIss)
-	if err != nil {
-		return nil, err
-	}
-
-	params := url.Values{
-		"client_id":             {c.clientId},
-		"redirect_uri":          {c.redirectUri},
-		"grant_type":            {"authorization_code"},
-		"code":                  {code},
-		"code_verifier":         {pkceVerifier},
-		"client_assertion_type": {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
-		"client_assertion":      {clientAssertion},
-	}
-
-	dpopProof, err := c.AuthServerDpopJwt("POST", authserverMeta.TokenEndpoint, dpopAuthserverNonce, dpopPrivateJwk)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", authserverMeta.TokenEndpoint, strings.NewReader(params.Encode()))
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("DPoP", dpopProof)
-
-	resp, err := c.h.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var tokenResponse TokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResponse); err != nil {
-		return nil, err
-	}
-
-	tokenResponse.DpopAuthserverNonce = dpopAuthserverNonce
-
-	return &tokenResponse, nil
+	return nil, nil
 }
 
 func (c *Client) RefreshTokenRequest(
@@ -459,24 +472,4 @@ func (c *Client) RefreshTokenRequest(
 	}
 
 	return nil, nil
-}
-
-func generateToken(len int) (string, error) {
-	b := make([]byte, len)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-
-	return hex.EncodeToString(b), nil
-}
-
-func generateCodeChallenge(pkceVerifier string) string {
-	h := sha256.New()
-	h.Write([]byte(pkceVerifier))
-	hash := h.Sum(nil)
-	return base64.RawURLEncoding.EncodeToString(hash)
-}
-
-func parsePrivateJwkFromString(str string) (jwk.Key, error) {
-	return jwk.ParseKey([]byte(str))
 }

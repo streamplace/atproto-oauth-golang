@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
@@ -15,34 +16,47 @@ import (
 )
 
 func (s *TestServer) handleLoginSubmit(e echo.Context) error {
-	handle := e.FormValue("handle")
-	if handle == "" {
-		return e.Redirect(302, "/login?e=handle-empty")
+	authInput := e.FormValue("auth-input")
+	if authInput == "" {
+		return e.Redirect(302, "/login?e=auth-input-empty")
 	}
 
-	_, herr := syntax.ParseHandle(handle)
-	_, derr := syntax.ParseDID(handle)
-
-	if herr != nil && derr != nil {
-		return e.Redirect(302, "/login?e=handle-invalid")
-	}
-
+	var service string
 	var did string
 
-	if derr == nil {
-		did = handle
+	if strings.HasPrefix("https://", authInput) {
+		u, err := url.Parse(authInput)
+		if err == nil {
+			u.Path = ""
+			u.RawQuery = ""
+			u.User = nil
+			service = u.String()
+		}
 	} else {
-		maybeDid, err := resolveHandle(e.Request().Context(), handle)
+		_, herr := syntax.ParseHandle(authInput)
+		_, derr := syntax.ParseDID(authInput)
+
+		if herr != nil && derr != nil {
+			return e.Redirect(302, "/login?e=handle-invalid")
+		}
+
+		if derr == nil {
+			did = authInput
+		} else {
+			maybeDid, err := resolveHandle(e.Request().Context(), authInput)
+			if err != nil {
+				return err
+			}
+
+			did = maybeDid
+		}
+
+		maybeService, err := resolveService(ctx, did)
 		if err != nil {
 			return err
 		}
 
-		did = maybeDid
-	}
-
-	service, err := resolveService(ctx, did)
-	if err != nil {
-		return err
+		service = maybeService
 	}
 
 	authserver, err := s.oauthClient.ResolvePDSAuthServer(ctx, service)
@@ -129,9 +143,8 @@ func (s *TestServer) handleCallback(e echo.Context) error {
 	}
 
 	sessState := sess.Values["oauth_state"]
-	sessDid := sess.Values["oauth_did"]
 
-	if resState == "" || resIss == "" || resCode == "" || sessState == "" || sessDid == "" {
+	if resState == "" || resIss == "" || resCode == "" {
 		return fmt.Errorf("request missing needed parameters")
 	}
 
@@ -140,11 +153,11 @@ func (s *TestServer) handleCallback(e echo.Context) error {
 	}
 
 	var oauthRequest OauthRequest
-	if err := s.db.Raw("SELECT * FROM oauth_requests WHERE state = ? AND did = ?", sessState, sessDid).Scan(&oauthRequest).Error; err != nil {
+	if err := s.db.Raw("SELECT * FROM oauth_requests WHERE state = ?", sessState).Scan(&oauthRequest).Error; err != nil {
 		return err
 	}
 
-	if err := s.db.Exec("DELETE FROM oauth_requests WHERE state = ? AND did = ?", sessState, sessDid).Error; err != nil {
+	if err := s.db.Exec("DELETE FROM oauth_requests WHERE state = ?", sessState).Error; err != nil {
 		return err
 	}
 
@@ -157,22 +170,18 @@ func (s *TestServer) handleCallback(e echo.Context) error {
 		return err
 	}
 
-	initialTokenResp, err := s.oauthClient.InitialTokenRequest(
-		e.Request().Context(),
-		resCode,
-		resIss,
-		oauthRequest.PkceVerifier,
-		oauthRequest.DpopAuthserverNonce,
-		jwk,
-	)
+	initialTokenResp, err := s.oauthClient.InitialTokenRequest(e.Request().Context(), resCode, resIss, oauthRequest.PkceVerifier, oauthRequest.DpopAuthserverNonce, jwk)
 	if err != nil {
 		return err
 	}
 
-	// TODO: resolve if needed
-
 	if initialTokenResp.Scope != scope {
 		return fmt.Errorf("did not receive correct scopes from token request")
+	}
+
+	// if we didn't start with a did, we can get it from the response
+	if oauthRequest.Did == "" {
+		oauthRequest.Did = initialTokenResp.Sub
 	}
 
 	oauthSession := &OauthSession{

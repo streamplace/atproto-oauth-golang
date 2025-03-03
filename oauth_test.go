@@ -42,7 +42,6 @@ func newTestOauthClient() *Client {
 	}
 
 	// make sure the server is running
-
 	req, err := http.NewRequest("GET", serverMetadataUrl, nil)
 	if err != nil {
 		panic(err)
