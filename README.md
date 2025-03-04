@@ -231,3 +231,93 @@ if requestInfo.Did == "" {
 
 Now, you can store the response items to make make authenticated requests later. You likely will want to store at least the user's DID in a secure session so that you know who the user is.
 
+### Refreshing the token
+
+The acess token you receive will expire after one hour and you will need to refresh it. You may choose to create a helper method that will refresh the token as necessary whenever you fetch the authentication information from your store. For an example, see `cmd/client_test/user.go`.
+
+## Making requests
+
+You may have some experience using the atproto SDK's helper methods from `indigo`. For example, you may be able to call `ActorGetProfile()` to fetch a user's profile. Currently, the atproto SDK does not support OAuth however, and will need some
+changes. In the meantime, I have added a custom XRPC client to this repo that can be used with OAuth sessions created in this library.
+
+### Creating an XRPC client
+
+Similar to the `indigo/xrpc` package, you can create an XRPC client like so
+
+```go
+client := &oauth.XrpcClient{
+    OnDpopPdsNonceChanged: func(did, newNonce string) {
+	// Handle updating your store with the new nonce
+    },
+}
+```
+
+The `OnDpopPdsNonceChanged` callback will fire whenever an authenticated request results in an updated DPoP PDS nonce. You should update your store with this nonce for future requests.
+
+### Making requests
+
+Instead of using "helpers", for now you should make requests by simply calling `Do()` on the XRPC client. You will need to pass `XrpcAuthedRequestArgs` to the function to perform authenticated requests.
+If the parameter is `nil`, the request will be made unauthenticated. A few examples are below.
+
+#### Creating authentication arguments
+
+```go
+// Get your user's session - however you are doing that - and retrieve their did
+
+// Grab the oauth session from your database
+oauthSession, err := s.getOauthSession(e.Request().Context(), did)
+
+// Parse the user's JWK to pass into arguments
+privateJwk, err := oauth.ParseJWKFromBytes([]byte(oauthSession.DpopPrivateJwk))
+if err != nil {
+	return nil, false, err
+}
+
+return &oauth.XrpcAuthedRequestArgs{
+	Did:            oauthSession.Did,
+	AccessToken:    oauthSession.AccessToken,
+	PdsUrl:         oauthSession.PdsUrl,
+	Issuer:         oauthSession.AuthserverIss,
+	DpopPdsNonce:   oauthSession.DpopPdsNonce,
+	DpopPrivateJwk: privateJwk,
+}, nil
+```
+
+#### Making a post
+
+```go
+authArgs, err := s.getOauthSessionAuthArgs(e)
+if err != nil {
+	return err
+}
+
+post := bsky.FeedPost{
+	Text:      "hello from atproto golang oauth client",
+	CreatedAt: syntax.DatetimeNow().String(),
+}
+
+input := atproto.RepoCreateRecord_Input{
+	Collection: "app.bsky.feed.post",
+	Repo:       authArgs.Did,
+	Record:     &util.LexiconTypeDecoder{Val: &post},
+}
+
+var out atproto.RepoCreateRecord_Output
+if err := s.xrpcCli.Do(e.Request().Context(), authArgs, xrpc.Procedure, "application/json", "com.atproto.repo.createRecord", nil, input, &out); err != nil {
+	return err
+}
+```
+
+#### Getting a profile
+
+```go
+authArgs, err := s.getOauthSessionAuthArgs(e)
+if err != nil {
+	return err
+}
+
+var out bsky.ActorDefs_ProfileViewDetailed
+if err := s.xrpcCli.Do(e.Request().Context(), authArgs, xrpc.Query, "", "app.bsky.actor.getProfile", map[string]any{"actor": authArgs.Did}, nil, &out); err != nil {
+	return err
+}
+```
