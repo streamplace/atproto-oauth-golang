@@ -33,15 +33,15 @@ check: ## Compile everything, checking syntax (does not output binaries)
 
 .PHONY: test-server
 test-server: ## Run the test server
-	go run ./cmd/client_test
+	go run ./cmd/web_server_demo
 
 .PHONY: test-jwks
 test-jwks: ## Create a test jwks file
-	go run ./cmd/cmd generate-jwks --prefix demo
+	go run ./cmd/helper generate-jwks --prefix demo
 
 .PHONY: jwks
 jwks:
-	go run ./cmd/cmd generate-jwks
+	go run ./cmd/helper generate-jwks
 
 .env:
 	if [ ! -f ".env" ]; then cp example.dev.env .env; fi
