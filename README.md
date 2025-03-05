@@ -59,7 +59,7 @@ func (s *TestServer) handleJwks(e echo.Context) error {
         return err
     }
 
-    k, err := oauth.ParseJWKFromBytes(b)
+    k, err := helpers.ParseJWKFromBytes(b)
     if err != nil {
         return err
     }
@@ -69,7 +69,7 @@ func (s *TestServer) handleJwks(e echo.Context) error {
         return err
     }
 
-    return e.JSON(200, oauth.CreateJwksResponseObject(pubKey))
+    return e.JSON(200, helpers.CreateJwksResponseObject(pubKey))
 }
 ```
 
@@ -90,12 +90,12 @@ if err != nil {
     return err
 }
 
-k, err := oauth.ParseJWKFromBytes(b)
+k, err := helpers.ParseJWKFromBytes(b)
 if err != nil {
     return err
 }
 
-cli, err := oauth.NewClient(oauth.ClientArgs{
+cli, err := helpers.NewClient(oauth.ClientArgs{
     ClientJwk: k,
     ClientId: clientId,
     RedirectUri: callbackUrl,
@@ -147,7 +147,7 @@ By this point, you will have the necessary information to direct the user where 
 You'll need to create a private DPoP JWK for the user before directing them to their PDS to authenticate. You'll need to store this in a later step, and you will need to pass it along inside the PAR request, so go ahead and marshal it as well. 
 
 ```go
-k, err := oauth.GenerateKey(nil)
+k, err := helpers.GenerateKey(nil)
 if err != nil {
     return err
 }
@@ -268,7 +268,7 @@ If the parameter is `nil`, the request will be made unauthenticated. A few examp
 oauthSession, err := s.getOauthSession(e.Request().Context(), did)
 
 // Parse the user's JWK to pass into arguments
-privateJwk, err := oauth.ParseJWKFromBytes([]byte(oauthSession.DpopPrivateJwk))
+privateJwk, err := helpers.ParseJWKFromBytes([]byte(oauthSession.DpopPrivateJwk))
 if err != nil {
 	return nil, false, err
 }
