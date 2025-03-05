@@ -6,6 +6,7 @@ import (
 	"time"
 
 	oauth "github.com/haileyok/atproto-oauth-golang"
+	oauth_helpers "github.com/haileyok/atproto-oauth-golang/helpers"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
 )
@@ -21,7 +22,7 @@ func (s *TestServer) getOauthSession(ctx context.Context, did string) (*OauthSes
 	}
 
 	if oauthSession.Expiration.Sub(time.Now()) <= 5*time.Minute {
-		privateJwk, err := oauth.ParseJWKFromBytes([]byte(oauthSession.DpopPrivateJwk))
+		privateJwk, err := oauth_helpers.ParseJWKFromBytes([]byte(oauthSession.DpopPrivateJwk))
 		if err != nil {
 			return nil, err
 		}
@@ -59,7 +60,7 @@ func (s *TestServer) getOauthSessionAuthArgs(e echo.Context) (*oauth.XrpcAuthedR
 
 	oauthSession, err := s.getOauthSession(e.Request().Context(), did)
 
-	privateJwk, err := oauth.ParseJWKFromBytes([]byte(oauthSession.DpopPrivateJwk))
+	privateJwk, err := oauth_helpers.ParseJWKFromBytes([]byte(oauthSession.DpopPrivateJwk))
 	if err != nil {
 		return nil, false, err
 	}

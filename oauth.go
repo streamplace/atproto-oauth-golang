@@ -13,6 +13,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/haileyok/atproto-oauth-golang/helpers"
+	internal_helpers "github.com/haileyok/atproto-oauth-golang/internal/helpers"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 )
 
@@ -46,7 +48,7 @@ func NewClient(args ClientArgs) (*Client, error) {
 		}
 	}
 
-	clientPkey, err := getPrivateKey(args.ClientJwk)
+	clientPkey, err := helpers.GetPrivateKey(args.ClientJwk)
 	if err != nil {
 		return nil, fmt.Errorf("could not load private key from provided client jwk: %w", err)
 	}
@@ -63,7 +65,7 @@ func NewClient(args ClientArgs) (*Client, error) {
 }
 
 func (c *Client) ResolvePdsAuthServer(ctx context.Context, ustr string) (string, error) {
-	u, err := isSafeAndParsed(ustr)
+	u, err := helpers.IsUrlSafeAndParsed(ustr)
 	if err != nil {
 		return "", err
 	}
@@ -104,7 +106,7 @@ func (c *Client) ResolvePdsAuthServer(ctx context.Context, ustr string) (string,
 }
 
 func (c *Client) FetchAuthServerMetadata(ctx context.Context, ustr string) (*OauthAuthorizationMetadata, error) {
-	u, err := isSafeAndParsed(ustr)
+	u, err := helpers.IsUrlSafeAndParsed(ustr)
 	if err != nil {
 		return nil, err
 	}
@@ -219,17 +221,17 @@ func (c *Client) SendParAuthRequest(ctx context.Context, authServerUrl string, a
 
 	parUrl := authServerMeta.PushedAuthorizationRequestEndpoint
 
-	state, err := generateToken(10)
+	state, err := internal_helpers.GenerateToken(10)
 	if err != nil {
 		return nil, fmt.Errorf("could not generate state token: %w", err)
 	}
 
-	pkceVerifier, err := generateToken(48)
+	pkceVerifier, err := internal_helpers.GenerateToken(48)
 	if err != nil {
 		return nil, fmt.Errorf("could not generate pkce verifier: %w", err)
 	}
 
-	codeChallenge := generateCodeChallenge(pkceVerifier)
+	codeChallenge := internal_helpers.GenerateCodeChallenge(pkceVerifier)
 	codeChallengeMethod := "S256"
 
 	clientAssertion, err := c.ClientAssertionJwt(authServerUrl)
@@ -259,7 +261,7 @@ func (c *Client) SendParAuthRequest(ctx context.Context, authServerUrl string, a
 		params.Set("login_hint", loginHint)
 	}
 
-	_, err = isSafeAndParsed(parUrl)
+	_, err = helpers.IsUrlSafeAndParsed(parUrl)
 	if err != nil {
 		return nil, err
 	}

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"os"
 
-	oauth "github.com/haileyok/atproto-oauth-golang"
+	oauth_helpers "github.com/haileyok/atproto-oauth-golang/helpers"
 	"github.com/urfave/cli/v2"
 )
 
@@ -33,7 +33,7 @@ var runGenerateJwks = &cli.Command{
 			inputPrefix := cmd.String("prefix")
 			prefix = &inputPrefix
 		}
-		key, err := oauth.GenerateKey(prefix)
+		key, err := oauth_helpers.GenerateKey(prefix)
 		if err != nil {
 			return err
 		}
