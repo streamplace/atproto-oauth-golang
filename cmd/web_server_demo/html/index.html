@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+  <p>welcome to atproto goauth demo webserver!</p>
+  {{ if .Did }}
+  <p>logged in as {{ .Did }}</p>
+  {{ end }}
+  <ul>
+    {{ if .Did }}
+    <li>
+      <a href="/profile">Profile</a>
+    </li>
+    <li>
+      <a href="/make-post">Make a Post</a>
+    </li>
+    <li>
+      <a href="/logout">Logout</a>
+    </li>
+    {{ else }}
+    <li>
+      <a href="/login">Login</a>
+    </li>
+    {{ end }}
+  </ul>
+</html>
