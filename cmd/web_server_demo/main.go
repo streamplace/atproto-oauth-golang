@@ -11,6 +11,7 @@ import (
 
 	"github.com/gorilla/sessions"
 	oauth "github.com/haileyok/atproto-oauth-golang"
+	oauth_helpers "github.com/haileyok/atproto-oauth-golang/helpers"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
@@ -51,7 +52,7 @@ type TestServer struct {
 	db           *gorm.DB
 	oauthClient  *oauth.Client
 	xrpcCli      *oauth.XrpcClient
-	jwksResponse *oauth.JwksResponseObject
+	jwksResponse *oauth_helpers.JwksResponseObject
 }
 
 type TemplateRenderer struct {
@@ -100,7 +101,7 @@ func NewServer() (*TestServer, error) {
 		return nil, err
 	}
 
-	k, err := oauth.ParseJWKFromBytes(b)
+	k, err := oauth_helpers.ParseJWKFromBytes(b)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +146,7 @@ func NewServer() (*TestServer, error) {
 		db:           db,
 		oauthClient:  c,
 		xrpcCli:      xrpcCli,
-		jwksResponse: oauth.CreateJwksResponseObject(pubKey),
+		jwksResponse: oauth_helpers.CreateJwksResponseObject(pubKey),
 	}, nil
 }
 

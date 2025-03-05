@@ -9,7 +9,7 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	"github.com/gorilla/sessions"
-	oauth "github.com/haileyok/atproto-oauth-golang"
+	oauth_helpers "github.com/haileyok/atproto-oauth-golang/helpers"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm/clause"
@@ -71,7 +71,7 @@ func (s *TestServer) handleLoginSubmit(e echo.Context) error {
 		return err
 	}
 
-	dpopPrivateKey, err := oauth.GenerateKey(nil)
+	dpopPrivateKey, err := oauth_helpers.GenerateKey(nil)
 	if err != nil {
 		return err
 	}
@@ -159,7 +159,7 @@ func (s *TestServer) handleCallback(e echo.Context) error {
 		return fmt.Errorf("incoming iss did not match authserver iss")
 	}
 
-	jwk, err := oauth.ParseJWKFromBytes([]byte(oauthRequest.DpopPrivateJwk))
+	jwk, err := oauth_helpers.ParseJWKFromBytes([]byte(oauthRequest.DpopPrivateJwk))
 	if err != nil {
 		return err
 	}

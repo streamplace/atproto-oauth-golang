@@ -8,6 +8,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/haileyok/atproto-oauth-golang/helpers"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/stretchr/testify/assert"
 )
@@ -27,7 +28,7 @@ func newTestOauthClient() *Client {
 		panic(err)
 	}
 
-	k, err := ParseJWKFromBytes(b)
+	k, err := helpers.ParseJWKFromBytes(b)
 	if err != nil {
 		panic(err)
 	}
@@ -81,7 +82,7 @@ func TestGenerateKey(t *testing.T) {
 	assert := assert.New(t)
 
 	prefix := "testing"
-	_, err := GenerateKey(&prefix)
+	_, err := helpers.GenerateKey(&prefix)
 	assert.NoError(err)
 }
 
@@ -95,7 +96,7 @@ func TestSendParAuthRequest(t *testing.T) {
 	}
 
 	prefix := "testing"
-	dpopPriv, err := GenerateKey(&prefix)
+	dpopPriv, err := helpers.GenerateKey(&prefix)
 	if err != nil {
 		panic(err)
 	}

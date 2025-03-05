@@ -16,6 +16,7 @@ import (
 	"github.com/carlmjohnson/versioninfo"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/haileyok/atproto-oauth-golang/internal/helpers"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 )
 
@@ -115,7 +116,7 @@ func PdsDpopJwt(method, url, iss, accessToken, nonce string, privateJwk jwk.Key)
 		"jti": uuid.NewString(),
 		"htm": method,
 		"htu": url,
-		"ath": generateCodeChallenge(accessToken),
+		"ath": helpers.GenerateCodeChallenge(accessToken),
 	}
 
 	if nonce != "" {
