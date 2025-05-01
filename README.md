@@ -189,7 +189,7 @@ Once you've stored the needed info, send the user to their PDS. The URL to redir
 
 ```go
 u, _ := url.Parse(meta.AuthorizationEndpoint)
-u.RawQuery = fmt.Sprintf("client_id=%s&requires_uri=%s", url.QueryEscape(yourClientId), parResp.RequestUri)
+u.RawQuery = fmt.Sprintf("client_id=%s&request_uri=%s", url.QueryEscape(yourClientId), parResp.RequestUri)
 
 // Redirect the user to created url
 ```
