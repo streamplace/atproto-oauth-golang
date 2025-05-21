@@ -10,8 +10,8 @@ import (
 	"os"
 
 	"github.com/gorilla/sessions"
-	oauth "github.com/haileyok/atproto-oauth-golang"
-	oauth_helpers "github.com/haileyok/atproto-oauth-golang/helpers"
+	oauth "github.com/streamplace/atproto-oauth-golang"
+	oauth_helpers "github.com/streamplace/atproto-oauth-golang/helpers"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"

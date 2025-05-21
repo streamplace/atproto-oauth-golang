@@ -1,4 +1,4 @@
-module github.com/haileyok/atproto-oauth-golang
+module github.com/streamplace/atproto-oauth-golang
 
 go 1.24.0
 
