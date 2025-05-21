@@ -9,7 +9,7 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/syntax"
 	"github.com/gorilla/sessions"
-	oauth_helpers "github.com/haileyok/atproto-oauth-golang/helpers"
+	oauth_helpers "github.com/streamplace/atproto-oauth-golang/helpers"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm/clause"

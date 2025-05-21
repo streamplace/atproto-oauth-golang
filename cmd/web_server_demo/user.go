@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	oauth "github.com/haileyok/atproto-oauth-golang"
-	oauth_helpers "github.com/haileyok/atproto-oauth-golang/helpers"
+	oauth "github.com/streamplace/atproto-oauth-golang"
+	oauth_helpers "github.com/streamplace/atproto-oauth-golang/helpers"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
 )

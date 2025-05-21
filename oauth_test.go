@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/haileyok/atproto-oauth-golang/helpers"
+	"github.com/streamplace/atproto-oauth-golang/helpers"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/stretchr/testify/assert"
 )

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"os"
 
-	oauth_helpers "github.com/haileyok/atproto-oauth-golang/helpers"
+	oauth_helpers "github.com/streamplace/atproto-oauth-golang/helpers"
 	"github.com/urfave/cli/v2"
 )
 

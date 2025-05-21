@@ -13,8 +13,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/haileyok/atproto-oauth-golang/helpers"
-	internal_helpers "github.com/haileyok/atproto-oauth-golang/internal/helpers"
+	"github.com/streamplace/atproto-oauth-golang/helpers"
+	internal_helpers "github.com/streamplace/atproto-oauth-golang/internal/helpers"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 )
 
