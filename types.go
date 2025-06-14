@@ -1,7 +1,6 @@
 package oauth
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"slices"
@@ -40,19 +39,6 @@ type OauthProtectedResource struct {
 	ResourceDocumentation  string   `json:"resource_documentation"`
 }
 
-func (opr *OauthProtectedResource) UnmarshalJSON(b []byte) error {
-	type Tmp OauthProtectedResource
-	var tmp Tmp
-
-	if err := json.Unmarshal(b, &tmp); err != nil {
-		return err
-	}
-
-	*opr = OauthProtectedResource(tmp)
-
-	return nil
-}
-
 type OauthAuthorizationMetadata struct {
 	Issuer                                     string   `json:"issuer"`
 	RequestParameterSupported                  bool     `json:"request_parameter_supported"`
@@ -82,19 +68,6 @@ type OauthAuthorizationMetadata struct {
 	DpopSigningAlgValuesSupported              []string `json:"dpop_signing_alg_values_supported"`
 	ProtectedResources                         []string `json:"protected_resources"`
 	ClientIDMetadataDocumentSupported          bool     `json:"client_id_metadata_document_supported"`
-}
-
-func (oam *OauthAuthorizationMetadata) UnmarshalJSON(b []byte) error {
-	type Tmp OauthAuthorizationMetadata
-	var tmp Tmp
-
-	if err := json.Unmarshal(b, &tmp); err != nil {
-		return err
-	}
-
-	*oam = OauthAuthorizationMetadata(tmp)
-
-	return nil
 }
 
 func (oam *OauthAuthorizationMetadata) Validate(fetch_url *url.URL) error {

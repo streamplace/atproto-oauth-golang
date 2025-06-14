@@ -88,13 +88,8 @@ func (c *Client) ResolvePdsAuthServer(ctx context.Context, ustr string) (string,
 		return "", fmt.Errorf("received non-200 response from pds. code was %d", resp.StatusCode)
 	}
 
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("could not read body: %w", err)
-	}
-
 	var resource OauthProtectedResource
-	if err := resource.UnmarshalJSON(b); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&resource); err != nil {
 		return "", fmt.Errorf("could not unmarshal json: %w", err)
 	}
 
@@ -129,13 +124,8 @@ func (c *Client) FetchAuthServerMetadata(ctx context.Context, ustr string) (*Oau
 		return nil, fmt.Errorf("received non-200 response from pds. status code was %d", resp.StatusCode)
 	}
 
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("could not read body for authserver metadata response: %w", err)
-	}
-
 	var metadata OauthAuthorizationMetadata
-	if err := metadata.UnmarshalJSON(b); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&metadata); err != nil {
 		return nil, fmt.Errorf("could not unmarshal authserver metadata: %w", err)
 	}
 
