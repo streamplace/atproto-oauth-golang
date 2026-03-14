@@ -166,12 +166,14 @@ func (c *Client) FetchAuthServerMetadata(ctx context.Context, ustr string) (*Oau
 }
 
 func (c *Client) ClientAssertionJwt(authServerUrl string) (string, error) {
+	now := time.Now().Unix()
 	claims := jwt.MapClaims{
 		"iss": c.clientId,
 		"sub": c.clientId,
 		"aud": authServerUrl,
 		"jti": uuid.NewString(),
-		"iat": time.Now().Unix(),
+		"iat": now,
+		"exp": now + 60,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
@@ -415,6 +417,10 @@ func (c *Client) InitialTokenRequest(
 			return nil, err
 		}
 
+		if _, err := helpers.IsUrlSafeAndParsed(authserverMeta.TokenEndpoint); err != nil {
+			return nil, fmt.Errorf("invalid token endpoint URL %q: %w", authserverMeta.TokenEndpoint, err)
+		}
+
 		clientAssertion, err := c.ClientAssertionJwt(authserverIss)
 		if err != nil {
 			return nil, err
@@ -474,7 +480,7 @@ func (c *Client) InitialTokenRequest(
 		return &tokenResponse, nil
 	}
 
-	return nil, nil
+	return nil, fmt.Errorf("DPoP nonce retry exhausted after 2 attempts for %s", authserverIss)
 }
 
 func (c *Client) RefreshTokenRequest(
@@ -489,6 +495,10 @@ func (c *Client) RefreshTokenRequest(
 		authserverMeta, err := c.FetchAuthServerMetadata(ctx, authserverIss)
 		if err != nil {
 			return nil, err
+		}
+
+		if _, err := helpers.IsUrlSafeAndParsed(authserverMeta.TokenEndpoint); err != nil {
+			return nil, fmt.Errorf("invalid token endpoint URL %q: %w", authserverMeta.TokenEndpoint, err)
 		}
 
 		clientAssertion, err := c.ClientAssertionJwt(authserverIss)
@@ -548,5 +558,5 @@ func (c *Client) RefreshTokenRequest(
 		return &tokenResponse, nil
 	}
 
-	return nil, nil
+	return nil, fmt.Errorf("DPoP nonce retry exhausted after 2 attempts for %s", authserverIss)
 }
