@@ -16,8 +16,8 @@ import (
 	"github.com/carlmjohnson/versioninfo"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/streamplace/atproto-oauth-golang/internal/helpers"
 	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/streamplace/atproto-oauth-golang/internal/helpers"
 )
 
 // This xrpc client is copied from the indigo xrpc client, with some tweaks:
@@ -142,22 +142,30 @@ func PdsDpopJwt(method, url, iss, accessToken, nonce string, privateJwk jwk.Key)
 }
 
 func (c *XrpcClient) Do(ctx context.Context, authedArgs *XrpcAuthedRequestArgs, kind string, inpenc, method string, params map[string]any, bodyobj any, out any) error {
+	// we need to buffer the body so the reader isn't consumed when we retry
+	var bodyBs []byte
+	var err error
+	if bodyobj != nil {
+		if rr, ok := bodyobj.(io.Reader); ok {
+			bodyBs, err = io.ReadAll(rr)
+			if err != nil {
+				return err
+			}
+		} else {
+			bodyBs, err = json.Marshal(bodyobj)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	// we might have to retry the request if we get a new nonce from the server
 	for range 2 {
 		var body io.Reader
-		if bodyobj != nil {
-			if rr, ok := bodyobj.(io.Reader); ok {
-				body = rr
-			} else {
-				b, err := json.Marshal(bodyobj)
-				if err != nil {
-					return err
-				}
-
-				body = bytes.NewReader(b)
-			}
+		if bodyBs != nil {
+			body = bytes.NewReader(bodyBs)
+		} else {
+			body = nil
 		}
-
 		var m string
 		switch kind {
 		case xrpc.Query:
