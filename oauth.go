@@ -13,10 +13,39 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/streamplace/atproto-oauth-golang/helpers"
 	internal_helpers "github.com/streamplace/atproto-oauth-golang/internal/helpers"
-	"github.com/lestrrat-go/jwx/v2/jwk"
 )
+
+// maxErrorBodyPreview is the maximum number of bytes to include from a
+// response body when building an error message. This prevents very large
+// HTML pages or binary blobs from flooding log output.
+const maxErrorBodyPreview = 512
+
+// decodeJSONResponse reads the HTTP response body and decodes it into dest.
+// It first validates that the response has an application/json Content-Type
+// and returns a descriptive error when the server returns a non-JSON response
+// (e.g. an HTML error page from a reverse proxy or misconfigured server).
+func decodeJSONResponse(resp *http.Response, dest any) error {
+	ct := resp.Header.Get("Content-Type")
+	if ct != "" && !strings.HasPrefix(ct, "application/json") {
+		preview, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyPreview))
+		return fmt.Errorf(
+			"expected application/json response but got %q (status %d); body preview: %s",
+			ct, resp.StatusCode, string(preview),
+		)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(dest); err != nil {
+		return fmt.Errorf(
+			"failed to decode JSON response (status %d, content-type %q): %w",
+			resp.StatusCode, ct, err,
+		)
+	}
+
+	return nil
+}
 
 type Client struct {
 	h                *http.Client
@@ -89,8 +118,8 @@ func (c *Client) ResolvePdsAuthServer(ctx context.Context, ustr string) (string,
 	}
 
 	var resource OauthProtectedResource
-	if err := json.NewDecoder(resp.Body).Decode(&resource); err != nil {
-		return "", fmt.Errorf("could not unmarshal json: %w", err)
+	if err := decodeJSONResponse(resp, &resource); err != nil {
+		return "", fmt.Errorf("could not decode oauth-protected-resource from %s: %w", u.String(), err)
 	}
 
 	if len(resource.AuthorizationServers) == 0 {
@@ -125,8 +154,8 @@ func (c *Client) FetchAuthServerMetadata(ctx context.Context, ustr string) (*Oau
 	}
 
 	var metadata OauthAuthorizationMetadata
-	if err := json.NewDecoder(resp.Body).Decode(&metadata); err != nil {
-		return nil, fmt.Errorf("could not unmarshal authserver metadata: %w", err)
+	if err := decodeJSONResponse(resp, &metadata); err != nil {
+		return nil, fmt.Errorf("could not decode authserver metadata from %s: %w", u.String(), err)
 	}
 
 	if err := metadata.Validate(u); err != nil {
@@ -137,12 +166,14 @@ func (c *Client) FetchAuthServerMetadata(ctx context.Context, ustr string) (*Oau
 }
 
 func (c *Client) ClientAssertionJwt(authServerUrl string) (string, error) {
+	now := time.Now().Unix()
 	claims := jwt.MapClaims{
 		"iss": c.clientId,
 		"sub": c.clientId,
 		"aud": authServerUrl,
 		"jti": uuid.NewString(),
-		"iat": time.Now().Unix(),
+		"iat": now,
+		"exp": now + 60,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
@@ -290,12 +321,15 @@ func (c *Client) SendParAuthRequest(ctx context.Context, authServerUrl string, a
 	}
 	defer resp.Body.Close()
 
-	var rmap map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&rmap); err != nil {
-		return nil, err
-	}
-
+	// Check for non-JSON error responses before attempting to decode.
+	// A misconfigured server (e.g. returning an HTML page) would otherwise
+	// produce a confusing "invalid character '<'" JSON parse error.
 	if resp.StatusCode != 201 {
+		var rmap map[string]any
+		if err := decodeJSONResponse(resp, &rmap); err != nil {
+			return nil, fmt.Errorf("PAR request to %s failed with status %d: %w", parUrl, resp.StatusCode, err)
+		}
+
 		if resp.StatusCode == 400 && rmap["error"] == "use_dpop_nonce" {
 			dpopAuthserverNonce = resp.Header.Get("DPoP-Nonce")
 			dpopProof, err := c.AuthServerDpopJwt("POST", parUrl, dpopAuthserverNonce, dpopPrivateKey)
@@ -322,25 +356,49 @@ func (c *Client) SendParAuthRequest(ctx context.Context, authServerUrl string, a
 			}
 			defer resp2.Body.Close()
 
-			rmap = map[string]any{}
-			if err := json.NewDecoder(resp2.Body).Decode(&rmap); err != nil {
-				return nil, err
+			if resp2.StatusCode != 201 {
+				var rmap2 map[string]any
+				if err := decodeJSONResponse(resp2, &rmap2); err != nil {
+					return nil, fmt.Errorf("PAR retry to %s failed with status %d: %w", parUrl, resp2.StatusCode, err)
+				}
+				return nil, fmt.Errorf("received error from server when submitting par request: %s", rmap2["error"])
 			}
 
-			if resp2.StatusCode != 201 {
-				return nil, fmt.Errorf("received error from server when submitting par request: %s", rmap["error"])
+			var rmap2 map[string]any
+			if err := decodeJSONResponse(resp2, &rmap2); err != nil {
+				return nil, fmt.Errorf("could not decode PAR response from %s: %w", parUrl, err)
 			}
-		} else {
-			return nil, fmt.Errorf("received error from server when submitting par request: %s", rmap["error"])
+			return buildParResponse(pkceVerifier, state, dpopAuthserverNonce, rmap2)
 		}
+
+		return nil, fmt.Errorf("received error from server when submitting par request to %s (status %d): %s", parUrl, resp.StatusCode, rmap["error"])
 	}
 
+	var rmap map[string]any
+	if err := decodeJSONResponse(resp, &rmap); err != nil {
+		return nil, fmt.Errorf("could not decode PAR response from %s: %w", parUrl, err)
+	}
+
+	return buildParResponse(pkceVerifier, state, dpopAuthserverNonce, rmap)
+}
+
+// buildParResponse safely extracts fields from a PAR response map,
+// avoiding bare type assertions that would panic on unexpected data.
+func buildParResponse(pkceVerifier, state, dpopNonce string, rmap map[string]any) (*SendParAuthResponse, error) {
+	expiresIn, ok := rmap["expires_in"].(float64)
+	if !ok {
+		return nil, fmt.Errorf("PAR response missing or invalid 'expires_in' field")
+	}
+	requestUri, ok := rmap["request_uri"].(string)
+	if !ok {
+		return nil, fmt.Errorf("PAR response missing or invalid 'request_uri' field")
+	}
 	return &SendParAuthResponse{
 		PkceVerifier:        pkceVerifier,
 		State:               state,
-		DpopAuthserverNonce: dpopAuthserverNonce,
-		ExpiresIn:           rmap["expires_in"].(float64),
-		RequestUri:          rmap["request_uri"].(string),
+		DpopAuthserverNonce: dpopNonce,
+		ExpiresIn:           expiresIn,
+		RequestUri:          requestUri,
 	}, nil
 }
 
@@ -357,6 +415,10 @@ func (c *Client) InitialTokenRequest(
 		authserverMeta, err := c.FetchAuthServerMetadata(ctx, authserverIss)
 		if err != nil {
 			return nil, err
+		}
+
+		if _, err := helpers.IsUrlSafeAndParsed(authserverMeta.TokenEndpoint); err != nil {
+			return nil, fmt.Errorf("invalid token endpoint URL %q: %w", authserverMeta.TokenEndpoint, err)
 		}
 
 		clientAssertion, err := c.ClientAssertionJwt(authserverIss)
@@ -395,8 +457,8 @@ func (c *Client) InitialTokenRequest(
 
 		if resp.StatusCode != 200 && resp.StatusCode != 201 {
 			var respMap map[string]string
-			if err := json.NewDecoder(resp.Body).Decode(&respMap); err != nil {
-				return nil, err
+			if err := decodeJSONResponse(resp, &respMap); err != nil {
+				return nil, fmt.Errorf("token request to %s failed with status %d: %w", authserverMeta.TokenEndpoint, resp.StatusCode, err)
 			}
 
 			if resp.StatusCode == 400 && respMap["error"] == "use_dpop_nonce" {
@@ -404,12 +466,12 @@ func (c *Client) InitialTokenRequest(
 				continue
 			}
 
-			return nil, fmt.Errorf("token refresh error: %s", respMap["error"])
+			return nil, fmt.Errorf("token request error from %s: %s", authserverMeta.TokenEndpoint, respMap["error"])
 		}
 
 		var tokenResponse TokenResponse
-		if err := json.NewDecoder(resp.Body).Decode(&tokenResponse); err != nil {
-			return nil, err
+		if err := decodeJSONResponse(resp, &tokenResponse); err != nil {
+			return nil, fmt.Errorf("could not decode token response from %s: %w", authserverMeta.TokenEndpoint, err)
 		}
 
 		// set nonce so the updates are reflected in the response
@@ -418,7 +480,7 @@ func (c *Client) InitialTokenRequest(
 		return &tokenResponse, nil
 	}
 
-	return nil, nil
+	return nil, fmt.Errorf("DPoP nonce retry exhausted after 2 attempts for %s", authserverIss)
 }
 
 func (c *Client) RefreshTokenRequest(
@@ -433,6 +495,10 @@ func (c *Client) RefreshTokenRequest(
 		authserverMeta, err := c.FetchAuthServerMetadata(ctx, authserverIss)
 		if err != nil {
 			return nil, err
+		}
+
+		if _, err := helpers.IsUrlSafeAndParsed(authserverMeta.TokenEndpoint); err != nil {
+			return nil, fmt.Errorf("invalid token endpoint URL %q: %w", authserverMeta.TokenEndpoint, err)
 		}
 
 		clientAssertion, err := c.ClientAssertionJwt(authserverIss)
@@ -469,8 +535,8 @@ func (c *Client) RefreshTokenRequest(
 
 		if resp.StatusCode != 200 && resp.StatusCode != 201 {
 			var respMap map[string]string
-			if err := json.NewDecoder(resp.Body).Decode(&respMap); err != nil {
-				return nil, err
+			if err := decodeJSONResponse(resp, &respMap); err != nil {
+				return nil, fmt.Errorf("token refresh to %s failed with status %d: %w", authserverMeta.TokenEndpoint, resp.StatusCode, err)
 			}
 
 			if resp.StatusCode == 400 && respMap["error"] == "use_dpop_nonce" {
@@ -478,12 +544,12 @@ func (c *Client) RefreshTokenRequest(
 				continue
 			}
 
-			return nil, fmt.Errorf("token refresh error: %s", respMap["error"])
+			return nil, fmt.Errorf("token refresh error from %s: %s", authserverMeta.TokenEndpoint, respMap["error"])
 		}
 
 		var tokenResponse TokenResponse
-		if err := json.NewDecoder(resp.Body).Decode(&tokenResponse); err != nil {
-			return nil, err
+		if err := decodeJSONResponse(resp, &tokenResponse); err != nil {
+			return nil, fmt.Errorf("could not decode token refresh response from %s: %w", authserverMeta.TokenEndpoint, err)
 		}
 
 		// set the nonce so that updates are reflected in response
@@ -492,5 +558,5 @@ func (c *Client) RefreshTokenRequest(
 		return &tokenResponse, nil
 	}
 
-	return nil, nil
+	return nil, fmt.Errorf("DPoP nonce retry exhausted after 2 attempts for %s", authserverIss)
 }
